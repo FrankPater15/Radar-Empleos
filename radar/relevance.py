@@ -38,7 +38,7 @@ TECH_ROLE = _rx(r"database|dba|salesforce|mulesoft|sap|erp|crm|security|segurida
                 r"data|datos|devops|integraciones|integration|aplicaciones|technical|tecnico")
 NON_TECH = _rx(r"sales|ventas|vendedor|account executive|ejecutiv[oa]|marketing|paid media|media buyer|"
                r"ad ops|ads|seo|recruiter|reclutador|talent|hr|rrhh|people|finance|finanzas|contador|"
-               r"accountant|legal|abogado|nurse|clinical|copywriter|content|linguist|linguistic|"
+               r"accountant|legal|lawyer|attorney|paralegal|abogado|nurse|doctor|medico|teacher|profesor|tutor|clinical|copywriter|content|linguist|linguistic|"
                r"translator|traductor|customer service|call center|telemarketing|designer|disenador|"
                r"product owner|business analyst|analista de negocios|onboarding|success")
 # Títulos claramente de desarrollo: ganan aunque el título tenga una palabra "no técnica"
