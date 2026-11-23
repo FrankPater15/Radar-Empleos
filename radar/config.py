@@ -85,3 +85,29 @@ SCORING_EFFORT = os.getenv("SCORING_EFFORT", "low")  # low | medium | high
 
 # Identificador honesto del cliente; no incluye datos personales
 USER_AGENT = "radar-empleo-co/0.1 (+personal job search tool)"
+
+# ---------- Ranking v2 ----------
+# Nivel de inglés del CV (A1..C2): las ofertas que piden más restan puntos en el prefiltro y la rúbrica
+ENGLISH_LEVEL = os.getenv("ENGLISH_LEVEL", "A2").upper()
+# ¿Eres estudiante activo? Las prácticas que lo exigen restan si no lo eres
+IS_STUDENT = os.getenv("IS_STUDENT", "false").lower() in ("1", "true", "si", "sí", "yes")
+# Versión de la rúbrica de IA: al cambiarla, todas las notas quedan pendientes de re-puntuar
+RUBRIC_VERSION = "v2"
+# Puntuación por lotes y presupuesto local de peticiones por minuto (0 = sin límite)
+SCORING_BATCH_SIZE = int(os.getenv("SCORING_BATCH_SIZE", "6"))
+GEMINI_RPM = int(os.getenv("GEMINI_RPM", "10"))
+# Tras caer al modelo de respaldo, volver a probar el principal cada N llamadas
+GEMINI_PRIMARY_RETRY_EVERY = int(os.getenv("GEMINI_PRIMARY_RETRY_EVERY", "10"))
+# No gastar IA en ofertas publicadas hace más de N días
+MAX_AGE_DAYS = int(os.getenv("MAX_AGE_DAYS", "90"))
+# rank_value: días sin descuento por antigüedad y vida media después
+RANK_FRESH_DAYS = 14
+RANK_HALF_LIFE_DAYS = 30
+# Hallazgos de mercado: habilidades y búsquedas extra (si no las definiste en .env)
+if not os.getenv("SKILLS"):
+    SKILLS = SKILLS + ["java", "spring", "power bi"]
+if not os.getenv("SEARCH_QUERIES"):
+    SEARCH_QUERIES = SEARCH_QUERIES + [
+        "analista desarrollador", "analista de pruebas", "tester junior", "desarrollador rpa", "uipath",
+        "power automate", "associate software engineer", "software engineer i", "new grad",
+        "junior data analyst", "aprendiz desarrollo de software"]

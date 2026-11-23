@@ -38,13 +38,13 @@ class Job(Base):
     # Relevancia para Colombia: oferta en Colombia o 100 % remota
     open_to_colombia: Mapped[bool] = mapped_column(Boolean, default=False, index=True)
 
-    # Prefiltro local 0–100 (radar/relevance.py) y sus razones; se recalcula en cada ingesta
+    # Prefiltro local 0â€“100 (radar/relevance.py) y sus razones; se recalcula en cada ingesta
     fit: Mapped[int | None] = mapped_column(Integer, index=True)
     fit_reasons: Mapped[list | None] = mapped_column(JSON)
-    # título+empresa normalizados: detecta la misma oferta publicada en dos fuentes
+    # tÃ­tulo+empresa normalizados: detecta la misma oferta publicada en dos fuentes
     dedupe_key: Mapped[str | None] = mapped_column(String(400), index=True)
 
-    # Puntuación con IA (fase 2). score_cv_hash detecta si cambiaste el CV desde la última nota
+    # PuntuaciÃ³n con IA (fase 2). score_cv_hash detecta si cambiaste el CV desde la Ãºltima nota
     score: Mapped[int | None] = mapped_column(Integer, index=True)
     score_data: Mapped[dict | None] = mapped_column(JSON)
     score_cv_hash: Mapped[str | None] = mapped_column(String(32))
@@ -54,15 +54,15 @@ class Job(Base):
     status: Mapped[str] = mapped_column(String(20), default="encontrada", index=True)
     first_seen_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utcnow)
     updated_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utcnow, onupdate=utcnow)
-    # Seguimiento (también del usuario; no están en ingest.SOURCE_FIELDS)
+    # Seguimiento (tambiÃ©n del usuario; no estÃ¡n en ingest.SOURCE_FIELDS)
     notes: Mapped[str | None] = mapped_column(Text)
     status_changed_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
-    applied_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))  # 1.ª vez "enviada"
+    applied_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))  # 1.Âª vez "enviada"
     follow_up_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), index=True)
 
 
 class Run(Base):
-    """Cada corrida de radar.run: sirve para saber qué ofertas son "nuevas" en el panel."""
+    """Cada corrida de radar.run: sirve para saber quÃ© ofertas son "nuevas" en el panel."""
 
     __tablename__ = "runs"
 

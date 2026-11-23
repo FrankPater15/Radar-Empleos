@@ -4,6 +4,7 @@ from __future__ import annotations
 import argparse
 import os
 import sys
+from datetime import timedelta
 from pathlib import Path
 
 from sqlalchemy import or_, select
@@ -16,12 +17,16 @@ from radar.scoring import ScoringError, make_scorer
 
 
 def pending_jobs(session: Session, cv_hash: str, limit: int, only_colombia: bool = True,
-                 rescore: bool = False, min_fit: int = 0) -> list[Job]:
+                 rescore: bool = False, min_fit: int = 0, max_age_days: int | None = None) -> list[Job]:
     """Ofertas sin nota, o con nota de un CV anterior, empezando por las de mejor prefiltro.
 
-    Las descartadas y las que no pasan el prefiltro (fit < min_fit) no gastan cuota de IA.
+    Las descartadas, las que no pasan el prefiltro (fit < min_fit) y las publicadas hace más
+    de `max_age_days` (config.MAX_AGE_DAYS; probablemente cerradas) no gastan cuota de IA.
     """
+    max_age = config.MAX_AGE_DAYS if max_age_days is None else max_age_days
     stmt = select(Job).where(Job.status != "descartada")
+    if max_age:
+        stmt = stmt.where(or_(Job.published_at.is_(None), Job.published_at >= utcnow() - timedelta(days=max_age)))
     if only_colombia:
         stmt = stmt.where(Job.open_to_colombia.is_(True))
     if min_fit:
@@ -33,23 +38,40 @@ def pending_jobs(session: Session, cv_hash: str, limit: int, only_colombia: bool
 
 
 def score_pending(session: Session, scorer, limit: int, only_colombia: bool = True,
-                  rescore: bool = False, log=print, min_fit: int = 0) -> tuple[int, int]:
+                  rescore: bool = False, log=print, min_fit: int = 0,
+                  batch_size: int | None = None) -> tuple[int, int]:
+    """Puntúa las pendientes. Si el scorer tiene `score_batch` (Gemini), va por lotes de
+    `batch_size` ofertas por llamada (config.SCORING_BATCH_SIZE); si no, de a una."""
+    size = config.SCORING_BATCH_SIZE if batch_size is None else batch_size
+    jobs = pending_jobs(session, scorer.cv_hash, limit, only_colombia, rescore, min_fit)
+    batched = size > 1 and hasattr(scorer, "score_batch")
+    chunks = [jobs[i:i + size] for i in range(0, len(jobs), size)] if batched else [[j] for j in jobs]
     ok = failed = 0
-    for job in pending_jobs(session, scorer.cv_hash, limit, only_colombia, rescore, min_fit):
-        try:
-            result = scorer.score(job)
-        except ScoringError as e:
-            log(f"  ! {e}")
-            failed += 1
-            continue
-        job.score = result.score
-        job.score_data = {**result.model_dump(), "model": scorer.model}
-        job.score_cv_hash = scorer.cv_hash
-        job.scored_at = utcnow()
-        session.commit()  # guarda una por una: si algo falla a mitad, no se pierde lo hecho
-        ok += 1
-        log(f"  {result.score}/5  [afinidad {job.fit}]  {job.title[:60]}  ({job.company or '?'})")
+    for chunk in chunks:
+        if batched:
+            results = scorer.score_batch(chunk)
+        else:
+            try:
+                results = [scorer.score(chunk[0])]
+            except ScoringError as e:
+                results = [e]
+        for job, result in zip(chunk, results):
+            if isinstance(result, ScoringError):
+                log(f"  ! {result}")
+                failed += 1
+                continue
+            _save(job, result, scorer)
+            ok += 1
+            log(f"  {result.score}/5  [afinidad {job.fit}]  {job.title[:60]}  ({job.company or '?'})")
+        session.commit()  # guarda lote por lote: si algo falla a mitad, no se pierde lo hecho
     return ok, failed
+
+
+def _save(job: Job, result, scorer) -> None:
+    job.score = result.score
+    job.score_data = {**result.model_dump(), "model": scorer.model}
+    job.score_cv_hash = scorer.cv_hash
+    job.scored_at = utcnow()
 
 
 def main() -> None:
@@ -63,9 +85,12 @@ def main() -> None:
     p.add_argument("--provider", default=config.SCORING_PROVIDER, help="gemini o anthropic")
     p.add_argument("--min-fit", type=int, default=config.MIN_FIT,
                    help="afinidad mínima del prefiltro (0–100) para gastar IA en una oferta")
+    p.add_argument("--batch-size", type=int, default=config.SCORING_BATCH_SIZE,
+                   help="ofertas por llamada a Gemini (1 = de a una)")
     args = p.parse_args()
     try:
-        score_cli(args.cv, args.provider, args.limit, not args.all_countries, args.rescore, args.min_fit)
+        score_cli(args.cv, args.provider, args.limit, not args.all_countries, args.rescore, args.min_fit,
+                  batch_size=args.batch_size)
     except ScoreSetupError as e:
         sys.exit(str(e))
 
@@ -75,7 +100,7 @@ class ScoreSetupError(RuntimeError):
 
 
 def score_cli(cv: str, provider: str, limit: int, only_colombia: bool = True, rescore: bool = False,
-              min_fit: int = config.MIN_FIT, log=print) -> tuple[int, int]:
+              min_fit: int = config.MIN_FIT, log=print, batch_size: int | None = None) -> tuple[int, int]:
     cv_path = Path(cv)
     if not cv_path.exists():
         raise ScoreSetupError(f"No encuentro el CV en {cv_path}. Copia cv/cv_maestro.example.md a {cv_path} y complétalo.")
@@ -90,7 +115,8 @@ def score_cli(cv: str, provider: str, limit: int, only_colombia: bool = True, re
     scorer = make_scorer(cv_path.read_text(encoding="utf-8"), provider)
     log(f"Proveedor: {provider} · modelo: {scorer.model}")
     with SessionLocal() as session:
-        ok, failed = score_pending(session, scorer, limit, only_colombia, rescore, log=log, min_fit=min_fit)
+        ok, failed = score_pending(session, scorer, limit, only_colombia, rescore, log=log, min_fit=min_fit,
+                                   batch_size=batch_size)
     log(f"Puntuadas: {ok}  fallidas: {failed}")
     return ok, failed
 
