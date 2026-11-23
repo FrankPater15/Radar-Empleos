@@ -9,3 +9,4 @@ cv/*
 logs/
 *.db-wal
 *.db-shm
+.claude/worktrees/

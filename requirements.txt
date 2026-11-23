@@ -8,3 +8,4 @@ python-dotenv>=1.0
 anthropic>=2.12
 google-genai>=3.6
 pytest>=8.0
+win11toast>=0.35; sys_platform == "win32"
