@@ -112,6 +112,15 @@ def _d(dt: datetime | None) -> str:
     return dt.strftime("%Y-%m-%d") if dt else ""
 
 
+_FORMULA_START = ("=", "+", "-", "@", "\t", "\r")
+
+
+def _safe(v) -> str:
+    """Neutraliza fórmulas (CSV injection): Excel ejecuta celdas que empiezan con = + - @."""
+    s = "" if v is None else str(v)
+    return "'" + s if s.startswith(_FORMULA_START) else s
+
+
 def export_csv(jobs: Iterable[Job], fp: TextIO, source_names: dict[str, str] | None = None) -> int:
     """CSV con ';' (Excel en español lo abre en columnas). La codificación (utf-8-sig) la pone quien escribe."""
     source_names = source_names or {}
@@ -120,9 +129,10 @@ def export_csv(jobs: Iterable[Job], fp: TextIO, source_names: dict[str, str] | N
     n = 0
     for j in jobs:
         rec = (j.score_data or {}).get("recommendation", "") if isinstance(j.score_data, dict) else ""
-        w.writerow([j.status, j.title, j.company or "", source_names.get(j.source, j.source), j.url,
-                    "" if j.fit is None else j.fit, "" if j.score is None else j.score, rec,
-                    _d(j.published_at), _d(j.first_seen_at), _d(j.applied_at), _d(j.follow_up_at),
-                    j.notes or ""])
+        w.writerow([_safe(c) for c in (
+            j.status, j.title, j.company or "", source_names.get(j.source, j.source), j.url,
+            "" if j.fit is None else j.fit, "" if j.score is None else j.score, rec,
+            _d(j.published_at), _d(j.first_seen_at), _d(j.applied_at), _d(j.follow_up_at),
+            j.notes or "")])
         n += 1
     return n
