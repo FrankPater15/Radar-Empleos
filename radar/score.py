@@ -64,27 +64,35 @@ def main() -> None:
     p.add_argument("--min-fit", type=int, default=config.MIN_FIT,
                    help="afinidad mínima del prefiltro (0–100) para gastar IA en una oferta")
     args = p.parse_args()
-    score_cli(args.cv, args.provider, args.limit, not args.all_countries, args.rescore, args.min_fit)
+    try:
+        score_cli(args.cv, args.provider, args.limit, not args.all_countries, args.rescore, args.min_fit)
+    except ScoreSetupError as e:
+        sys.exit(str(e))
+
+
+class ScoreSetupError(RuntimeError):
+    """Falta el CV o la key del proveedor: no se puede puntuar."""
 
 
 def score_cli(cv: str, provider: str, limit: int, only_colombia: bool = True, rescore: bool = False,
-              min_fit: int = config.MIN_FIT) -> None:
+              min_fit: int = config.MIN_FIT, log=print) -> tuple[int, int]:
     cv_path = Path(cv)
     if not cv_path.exists():
-        sys.exit(f"No encuentro el CV en {cv_path}. Copia cv/cv_maestro.example.md a {cv_path} y complétalo.")
+        raise ScoreSetupError(f"No encuentro el CV en {cv_path}. Copia cv/cv_maestro.example.md a {cv_path} y complétalo.")
 
     provider = provider.lower()
     if provider == "gemini" and not (os.getenv("GEMINI_API_KEY") or os.getenv("GOOGLE_API_KEY")):
-        sys.exit("Falta GEMINI_API_KEY. Créala gratis en https://aistudio.google.com y ponla en .env")
+        raise ScoreSetupError("Falta GEMINI_API_KEY. Créala gratis en https://aistudio.google.com y ponla en .env")
     if provider in ("anthropic", "claude") and not (os.getenv("ANTHROPIC_API_KEY") or os.getenv("ANTHROPIC_AUTH_TOKEN")):
-        sys.exit("Falta ANTHROPIC_API_KEY. Créala en https://platform.claude.com y ponla en .env")
+        raise ScoreSetupError("Falta ANTHROPIC_API_KEY. Créala en https://platform.claude.com y ponla en .env")
 
     init_db()
     scorer = make_scorer(cv_path.read_text(encoding="utf-8"), provider)
-    print(f"Proveedor: {provider} · modelo: {scorer.model}")
+    log(f"Proveedor: {provider} · modelo: {scorer.model}")
     with SessionLocal() as session:
-        ok, failed = score_pending(session, scorer, limit, only_colombia, rescore, min_fit=min_fit)
-    print(f"Puntuadas: {ok}  fallidas: {failed}")
+        ok, failed = score_pending(session, scorer, limit, only_colombia, rescore, log=log, min_fit=min_fit)
+    log(f"Puntuadas: {ok}  fallidas: {failed}")
+    return ok, failed
 
 
 if __name__ == "__main__":

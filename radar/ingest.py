@@ -116,14 +116,40 @@ def source_streams(sources: list[str], client, log=print) -> Iterator[tuple[str,
             log(f"  ! fuente desconocida: {name}")
 
 
-def run(sources: list[str], log=print) -> dict[str, tuple[int, int]]:
-    init_db()
+def _guarded(stream: Iterable[dict], errors: list[BaseException]) -> Iterator[dict]:
+    """Corta el flujo de una fuente al primer error, sin perder lo ya descargado."""
+    try:
+        yield from stream
+    except Exception as e:  # red caída, JSON inválido, cambio en la API…
+        errors.append(e)
+
+
+def run(sources: list[str], log=print, session_factory=None, client_factory=make_client,
+        errors: dict[str, str] | None = None) -> dict[str, tuple[int, int]]:
+    """Ingesta de todas las fuentes. Cada fuente falla por separado: se registra y se sigue.
+
+    Si se pasa `errors`, se llena con {fuente: mensaje} de las que fallaron.
+    """
+    if session_factory is None:
+        init_db()
+        session_factory = SessionLocal
+    errors = {} if errors is None else errors
     results = {}
-    with SessionLocal() as session, make_client() as client:
+    with session_factory() as session, client_factory() as client:
         refresh_fit(session)  # ofertas viejas sin prefiltro
         for name, stream in source_streams(sources, client, log):
             log(f"[{name}] descargando…")
-            results[name] = upsert_jobs(session, stream)
+            failures: list[BaseException] = []
+            try:
+                results[name] = upsert_jobs(session, _guarded(stream, failures))
+            except Exception as e:  # error al guardar: se deshace solo esta fuente
+                session.rollback()
+                failures.append(e)
+                results[name] = (0, 0)
+            if failures:
+                e = failures[0]
+                errors[name] = f"{type(e).__name__}: {e}"
+                log(f"[{name}] ! error, se sigue con las demás fuentes: {errors[name]}")
             log(f"[{name}] nuevas: {results[name][0]}  actualizadas: {results[name][1]}")
     return results
 

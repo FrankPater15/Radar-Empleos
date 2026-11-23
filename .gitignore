@@ -6,3 +6,6 @@ __pycache__/
 *.db
 cv/*
 !cv/cv_maestro.example.md
+logs/
+*.db-wal
+*.db-shm
