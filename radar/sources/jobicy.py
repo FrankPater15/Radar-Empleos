@@ -11,7 +11,7 @@ from typing import Iterator
 
 import httpx
 
-from radar.sources.common import geo_open_to_colombia, get_json, html_to_text, make_client, to_int
+from radar.sources.common import geo_open_to_colombia, get_json, html_to_text, make_client, parse_each, to_int
 
 API_URL = "https://jobicy.com/api/v2/remote-jobs"
 SOURCE = "jobicy"
@@ -41,7 +41,7 @@ def parse_job(j: dict) -> dict:
     pub = j.get("pubDate")
     try:
         published = datetime.fromisoformat(pub) if pub else None
-    except ValueError:
+    except (ValueError, TypeError):
         published = None
     lo, hi = to_int(j.get("annualSalaryMin")), to_int(j.get("annualSalaryMax"))
     lo, hi = (round(lo / 12) if lo else None), (round(hi / 12) if hi else None)
@@ -76,8 +76,8 @@ def fetch_all(industries: list[str], client: httpx.Client | None = None, log=pri
             except httpx.HTTPError as e:
                 log(f"  ! jobicy/{ind}: {e}")
                 continue
-            for j in payload.get("jobs") or []:
-                yield parse_job(j)
+            if isinstance(payload, dict):
+                yield from parse_each(payload.get("jobs"), parse_job, label=f"jobicy/{ind}")
             time.sleep(delay_s)
     finally:
         if own_client:

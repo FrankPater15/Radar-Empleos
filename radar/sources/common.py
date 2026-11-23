@@ -2,12 +2,19 @@
 from __future__ import annotations
 
 import html
+import logging
 import re
 import time
+from typing import Callable, Iterator
 
 import httpx
 
 from radar.config import USER_AGENT
+
+logger = logging.getLogger("radar.sources")
+
+# Errores que provoca un elemento mal formado (no los de red, que se tratan aparte)
+PARSE_ERRORS = (KeyError, IndexError, TypeError, ValueError, OverflowError, OSError, AttributeError)
 
 _TAG_RE = re.compile(r"<[^>]+>")
 _BLOCK_RE = re.compile(r"</?(p|li|ul|ol|br|div|h\d|tr)[^>]*>", re.I)
@@ -39,6 +46,22 @@ def safe_url(url) -> str | None:
     return url if _URL_RE.fullmatch(url) else None
 
 
+def parse_each(items, parse: Callable[..., dict], *args, label: str = "", **kwargs) -> Iterator[dict]:
+    """Aplica `parse` a cada elemento: uno corrupto se registra y se omite, sin perder los demás."""
+    if not isinstance(items, (list, tuple)):
+        if items:
+            logger.warning("%s: se esperaba una lista y llegó %s", label or "fuente", type(items).__name__)
+        return
+    for item in items:
+        try:
+            job = parse(item, *args, **kwargs)
+        except PARSE_ERRORS as e:
+            logger.warning("%s: oferta omitida por datos corruptos (%s: %s)", label or "fuente",
+                           type(e).__name__, e)
+            continue
+        yield job
+
+
 def make_client() -> httpx.Client:
     return httpx.Client(timeout=25, headers={"User-Agent": USER_AGENT}, follow_redirects=True)
 
@@ -63,6 +86,8 @@ def geo_open_to_colombia(places: list[str] | str | None) -> bool:
         return False
     items = [places] if isinstance(places, str) else places
     for p in items:
+        if not isinstance(p, str):
+            continue
         low = p.lower()
         if "colombia" in low or any(w in low for w in LATAM_WORDS) or any(w in low for w in WORLDWIDE_WORDS):
             return True

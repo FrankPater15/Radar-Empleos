@@ -185,3 +185,57 @@ def test_ingesta_no_bloquea_la_bd_mientras_descarga(tmp_path, monkeypatch):
     results = ingest.run(["b"], log=lambda m: None, session_factory=FileSession, client_factory=nullcontext)
     assert writes == ["ok"] and results == {"b": (2, 0)}
     engine.dispose()
+
+
+# ---------- 5. Un ítem corrupto no aborta la fuente ----------
+import json  # noqa: E402
+import logging  # noqa: E402
+from pathlib import Path  # noqa: E402
+
+from radar.sources import ats, getonbrd, himalayas, jobicy  # noqa: E402
+from tests.test_search import HIMALAYAS_JOB, JOBICY_JOB  # noqa: E402
+
+
+def test_getonbrd_item_corrupto(monkeypatch, caplog):
+    page = json.loads((Path(__file__).parent / "fixtures" / "getonbrd_page.json").read_text(encoding="utf-8"))
+    good = page["data"]
+    bad = [{"id": "x"}, {"id": "y", "attributes": {"seniority": {"data": {"id": "abc"}}}},
+           {"id": "z", "attributes": {"published_at": 10**18}}, "no soy un dict", None]
+    page["data"] = [bad[0], good[0], bad[1], bad[2], good[1], bad[3], bad[4], good[2]]
+    monkeypatch.setattr(getonbrd, "get_json", lambda *a, **k: page)
+    with caplog.at_level(logging.WARNING, logger="radar.sources"):
+        jobs = list(getonbrd.fetch_category("programming", max_pages=1, delay_s=0))
+    assert [j["external_id"] for j in jobs] == [g["id"] for g in good]
+    assert "omitida" in caplog.text
+    # payload que no es dict: se corta esa página sin excepción
+    monkeypatch.setattr(getonbrd, "get_json", lambda *a, **k: [1, 2])
+    assert list(getonbrd.fetch_category("programming", max_pages=1, delay_s=0)) == []
+
+
+def test_himalayas_item_corrupto(monkeypatch):
+    bad = {**HIMALAYAS_JOB, "parentCategories": [5], "locationRestrictions": "Colombia", "pubDate": "x" * 30}
+    worse = {**HIMALAYAS_JOB, "pubDate": 10**20}
+    payload = {"jobs": [worse, HIMALAYAS_JOB, "basura", bad], "totalCount": 4, "offset": 0}
+    monkeypatch.setattr(himalayas, "get_json", lambda *a, **k: payload)
+    jobs = list(himalayas.search("qa", max_pages=1))
+    assert HIMALAYAS_JOB["guid"] in [j["url"] for j in jobs] and len(jobs) >= 1
+    monkeypatch.setattr(himalayas, "get_json", lambda *a, **k: ["no es dict"])
+    assert list(himalayas.search("qa", max_pages=1)) == []
+
+
+def test_jobicy_item_corrupto(monkeypatch):
+    payload = {"jobs": [{"jobTitle": "sin id"}, JOBICY_JOB, {**JOBICY_JOB, "id": 2, "pubDate": 12345}, 7]}
+    monkeypatch.setattr(jobicy, "get_json", lambda *a, **k: payload)
+    jobs = list(jobicy.fetch_all(["dev"], client=object(), delay_s=0))
+    assert [j["external_id"] for j in jobs] == ["163890", "2"]
+
+
+def test_ats_item_corrupto(monkeypatch):
+    co = {"name": "Acme", "ats": "greenhouse", "token": "acme"}
+    payload = {"jobs": [{"title": "sin id"}, None,
+                        {"id": 1, "title": "Dev", "absolute_url": "https://x/1", "location": {"name": "Colombia"}},
+                        {"id": 2, "title": "Dev 2", "absolute_url": "https://x/2", "location": "mal"}]}
+    monkeypatch.setattr(ats, "get_json", lambda *a, **k: payload)
+    ids = [j["external_id"] for j in ats.fetch_greenhouse(None, co)]
+    assert ids == ["greenhouse:acme:1"]
+    assert [j["external_id"] for j in ats.fetch_company(None, co)] == ["greenhouse:acme:1"]

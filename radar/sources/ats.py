@@ -18,7 +18,7 @@ from typing import Callable, Iterator
 import httpx
 
 from radar import config
-from radar.sources.common import get_json, html_to_text, make_client, to_int
+from radar.sources.common import PARSE_ERRORS, get_json, html_to_text, logger, make_client, parse_each, to_int
 
 SOURCE = "ats"
 SOURCE_NAME = "Empresas (ATS)"
@@ -87,6 +87,10 @@ def _modality(remote: bool | None, hybrid: bool = False) -> str | None:
     return "fully_remote" if remote else "no_remote"
 
 
+def _label(ats: str, company: dict) -> str:
+    return f"ats {ats}/{company['token']}"
+
+
 def _base(ats: str, company: dict, jobid, title, url, *, open_to_colombia: bool, countries=None,
           category=None, seniority=None, remote_modality=None, description="", published_at=None) -> dict:
     token = company["token"]
@@ -130,7 +134,7 @@ def parse_greenhouse(j: dict, company: dict) -> dict:
 def fetch_greenhouse(client, company):
     data = get_json(client, f"https://boards-api.greenhouse.io/v1/boards/{company['token']}/jobs",
                     {"content": "true"})
-    return [parse_greenhouse(j, company) for j in data.get("jobs") or []]
+    return list(parse_each(data.get("jobs"), parse_greenhouse, company, label=_label("greenhouse", company)))
 
 
 # --- Lever ------------------------------------------------------------------------------------
@@ -153,7 +157,7 @@ def fetch_lever(client, company):
     data = get_json(client, f"https://api.lever.co/v0/postings/{company['token']}", {"mode": "json"})
     if not isinstance(data, list):
         raise ValueError("respuesta inesperada de Lever")
-    return [parse_lever(j, company) for j in data]
+    return list(parse_each(data, parse_lever, company, label=_label("lever", company)))
 
 
 # --- Ashby ------------------------------------------------------------------------------------
@@ -175,7 +179,8 @@ def parse_ashby(j: dict, company: dict) -> dict:
 
 def fetch_ashby(client, company):
     data = get_json(client, f"https://api.ashbyhq.com/posting-api/job-board/{company['token']}")
-    return [parse_ashby(j, company) for j in data.get("jobs") or [] if j.get("isListed", True)]
+    jobs = [j for j in data.get("jobs") or [] if not isinstance(j, dict) or j.get("isListed", True)]
+    return list(parse_each(jobs, parse_ashby, company, label=_label("ashby", company)))
 
 
 # --- SmartRecruiters --------------------------------------------------------------------------
@@ -210,7 +215,8 @@ def fetch_smartrecruiters(client, company, sleep=time.sleep):
                 detail = get_json(client, f"{base}/{j['id']}")
             except Exception:
                 detail = None
-            out.append(parse_smartrecruiters(j, company, detail))
+            out.extend(parse_each([j], parse_smartrecruiters, company, detail,
+                                  label=_label("smartrecruiters", company)))
             sleep(0.3)
         offset += len(items)
         if not items or offset >= (data.get("totalFound") or 0):
@@ -239,7 +245,7 @@ def parse_workable(j: dict, company: dict) -> dict:
 def fetch_workable(client, company):
     data = get_json(client, f"https://apply.workable.com/api/v1/widget/accounts/{company['token']}",
                     {"details": "true"})
-    return [parse_workable(j, company) for j in data.get("jobs") or []]
+    return list(parse_each(data.get("jobs"), parse_workable, company, label=_label("workable", company)))
 
 
 # --- BambooHR ---------------------------------------------------------------------------------
@@ -265,7 +271,12 @@ def fetch_bamboohr(client, company, sleep=time.sleep):
     resp.raise_for_status()
     out = []
     for j in resp.json().get("result") or []:
-        job = parse_bamboohr(j, company)
+        try:
+            job = parse_bamboohr(j, company)
+        except PARSE_ERRORS as e:
+            logger.warning("%s: oferta omitida por datos corruptos (%s: %s)", _label("bamboohr", company),
+                           type(e).__name__, e)
+            continue
         if job["open_to_colombia"]:
             try:
                 r = client.get(f"{base}/{j['id']}/detail", headers={"Accept": "application/json"})
@@ -313,9 +324,9 @@ def fetch_remoteok(client=None, log=print) -> Iterator[dict]:
     try:
         for j in get_json(client, "https://remoteok.com/api"):
             if isinstance(j, dict) and j.get("id") and j.get("position"):
-                job = parse_remoteok(j)
-                if job["open_to_colombia"] and job["url"]:
-                    yield job
+                for job in parse_each([j], parse_remoteok, label="remoteok"):
+                    if job["open_to_colombia"] and job["url"]:
+                        yield job
     except Exception as e:
         log(f"  ! remoteok: {e}")
     finally:
