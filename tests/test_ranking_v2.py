@@ -210,6 +210,23 @@ def test_score_pending_uses_batches(session):  # noqa: F811
     assert session.get(Job, "getonbrd:a").score_data["fit_pct"] == 40
 
 
+def test_score_pending_reports_fallback_model(session):  # noqa: F811
+    busy = genai_errors.ServerError(503, {"error": {"code": 503, "status": "UNAVAILABLE", "message": "x"}})
+    client = gemini_client(busy, batch_json(("j1", 4), ("j2", 2)))
+    scorer = GeminiScorer("cv", client=client, model="main", fallback_model="lite", rpm=0, log=lambda *_: None)
+    logs = []
+    assert score_pending(session, scorer, limit=10, log=logs.append, batch_size=6) == (2, 0)
+    assert any("2 con lite" in m and "main no estuvo disponible" in m for m in logs)
+
+
+def test_score_pending_no_fallback_notice_when_primary_works(session):  # noqa: F811
+    scorer = GeminiScorer("cv", client=gemini_client(batch_json(("j1", 4), ("j2", 2))), model="main",
+                          fallback_model="lite", rpm=0)
+    logs = []
+    score_pending(session, scorer, limit=10, log=logs.append, batch_size=6)
+    assert not any("disponible" in m for m in logs)
+
+
 def test_rpm_budget_waits_before_exceeding():
     t = [0.0]
     sleeps = []

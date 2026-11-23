@@ -4,6 +4,7 @@ from __future__ import annotations
 import argparse
 import os
 import sys
+from collections import Counter
 from datetime import timedelta
 from pathlib import Path
 
@@ -76,6 +77,7 @@ def score_pending(session: Session, scorer, limit: int, only_colombia: bool = Tr
     batched = size > 1 and hasattr(scorer, "score_batch")
     chunks = [jobs[i:i + size] for i in range(0, len(jobs), size)] if batched else [[j] for j in jobs]
     ok = failed = 0
+    by_model: Counter[str] = Counter()
     for chunk in chunks:
         try:
             results = scorer.score_batch(chunk) if batched else [scorer.score(chunk[0])]
@@ -91,9 +93,19 @@ def score_pending(session: Session, scorer, limit: int, only_colombia: bool = Tr
                 continue
             _save(job, result, scorer)
             ok += 1
+            by_model[scorer.model] += 1
             log(f"  {result.score}/5  [afinidad {job.fit}]  {job.title[:60]}  ({job.company or '?'})")
         session.commit()  # guarda lote por lote: si algo falla a mitad, no se pierde lo hecho
+    _report_fallback(by_model, getattr(scorer, "primary_model", None), log)
     return ok, failed
+
+
+def _report_fallback(by_model: Counter[str], primary: str | None, log) -> None:
+    """Avisa si parte de las notas salió del modelo de respaldo (más barato y menos fino)."""
+    backup = {m: n for m, n in by_model.items() if primary and m != primary}
+    if backup:
+        used = ", ".join(f"{n} con {m}" for m, n in backup.items())
+        log(f"  ! {used}: {primary} no estuvo disponible, esas notas pueden ser menos finas")
 
 
 def _save(job: Job, result, scorer) -> None:
