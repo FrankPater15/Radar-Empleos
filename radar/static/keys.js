@@ -166,6 +166,13 @@
     const form = ev.target;
     const card = form.closest("article.job");
     if (!card) return;
+    if (form.matches("form.paste-desc")) {
+      // Envío normal (recarga con la nota nueva); solo se avisa que la IA tarda unos segundos
+      const btn = form.querySelector("button[type=submit]");
+      if (btn) setTimeout(() => { btn.disabled = true; btn.textContent = "Evaluando con IA…"; }, 0);
+      announce("Evaluando con IA, puede tardar unos segundos…");
+      return;
+    }
     if (form.matches("form.status")) {
       const btn = ev.submitter;
       if (!btn || btn.name !== "status") return;

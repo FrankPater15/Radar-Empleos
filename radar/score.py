@@ -142,22 +142,38 @@ class ScoreSetupError(RuntimeError):
     """Falta el CV o la key del proveedor: no se puede puntuar."""
 
 
-def score_cli(cv: str, provider: str, limit: int, only_colombia: bool = True, rescore: bool = False,
-              min_fit: int = config.MIN_FIT, log=print, batch_size: int | None = None,
-              retry_failed: bool = False) -> tuple[int, int]:
-    cv_path = Path(cv)
+def load_scorer(cv: str | None = None, provider: str | None = None):
+    """Scorer listo para usar, o ScoreSetupError si falta el CV o la key del proveedor."""
+    cv_path = Path(cv or config.CV_PATH)
     if not cv_path.exists():
         raise ScoreSetupError(f"No encuentro el CV en {cv_path}. Copia cv/cv_maestro.example.md a {cv_path} y complétalo.")
 
-    provider = provider.lower()
+    provider = (provider or config.SCORING_PROVIDER).lower()
     if provider == "gemini" and not (os.getenv("GEMINI_API_KEY") or os.getenv("GOOGLE_API_KEY")):
         raise ScoreSetupError("Falta GEMINI_API_KEY. Créala gratis en https://aistudio.google.com y ponla en .env")
     if provider in ("anthropic", "claude") and not (os.getenv("ANTHROPIC_API_KEY") or os.getenv("ANTHROPIC_AUTH_TOKEN")):
         raise ScoreSetupError("Falta ANTHROPIC_API_KEY. Créala en https://platform.claude.com y ponla en .env")
+    return make_scorer(cv_path.read_text(encoding="utf-8"), provider)
 
+
+def score_one(session: Session, job: Job, scorer):
+    """Puntúa una sola oferta ya (p. ej. tras pegar su descripción en el panel) y la guarda.
+    No mira el prefiltro: la pediste tú. Lanza ScoringError si la IA no responde."""
+    try:
+        result = scorer.score(job)
+    except Exception as e:
+        raise as_scoring_error(e) from e
+    _save(job, result, scorer)
+    session.commit()
+    return result
+
+
+def score_cli(cv: str, provider: str, limit: int, only_colombia: bool = True, rescore: bool = False,
+              min_fit: int = config.MIN_FIT, log=print, batch_size: int | None = None,
+              retry_failed: bool = False) -> tuple[int, int]:
+    scorer = load_scorer(cv, provider)
     init_db()
-    scorer = make_scorer(cv_path.read_text(encoding="utf-8"), provider)
-    log(f"Proveedor: {provider} · modelo: {scorer.model}")
+    log(f"Proveedor: {provider.lower()} · modelo: {scorer.model}")
     with SessionLocal() as session:
         ok, failed = score_pending(session, scorer, limit, only_colombia, rescore, log=log, min_fit=min_fit,
                                    batch_size=batch_size, retry_failed=retry_failed)

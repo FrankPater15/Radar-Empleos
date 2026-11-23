@@ -33,6 +33,9 @@ class Job(Base):
     max_salary: Mapped[int | None] = mapped_column(Integer)
     salary_currency: Mapped[str | None] = mapped_column(String(10))
     description: Mapped[str | None] = mapped_column(Text)
+    # True si la descripción la pegaste tú en el panel (alertas de correo sin descripción):
+    # la ingesta ya no la reemplaza por la de la fuente
+    description_manual: Mapped[bool | None] = mapped_column(Boolean, default=False)
     published_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), index=True)
 
     # Relevancia para Colombia: oferta en Colombia o 100 % remota

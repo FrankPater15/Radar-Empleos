@@ -403,6 +403,8 @@ progress.progress-ring::-moz-progress-bar { display: none; background: none; }
   background: var(--bg); color: inherit; font: inherit; font-size: 0.9rem; resize: vertical;
 }
 .notes textarea:focus { border-color: var(--accent); }
+.paste label { color: var(--muted); font-size: 0.82rem; }
+.paste button[disabled] { cursor: progress; opacity: 0.7; }
 
 /* ---------- Atajos de teclado ---------- */
 .results-actions { display: flex; flex-wrap: wrap; gap: 8px; }

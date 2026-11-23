@@ -119,6 +119,7 @@ Las rutas relativas (`DATABASE_URL=sqlite:///radar.db`, `CV_PATH`, `LOG_FILE`) s
 - **Nuevas:** `/?nuevas=1` muestra las ofertas vistas por primera vez desde el inicio de la última corrida de `radar.run` (si no hay corridas registradas, las de las últimas 24 h). Llevan la insignia *Nueva*.
 - **Enviada:** al marcar una oferta como *enviada* se guarda la fecha y se programa un seguimiento a los 7 días (`FOLLOW_UP_DAYS` en `.env`). `/?seguimiento=1` lista los vencidos, con los botones *Seguimiento hecho* y *Posponer 7 días*. Marcar *enviada* solo lo anota en tu radar: no postula ni contacta a nadie.
 - **Notas:** cada tarjeta tiene un campo de notas que se guarda en la base.
+- **Pegar la descripción:** las ofertas de alertas por correo (LinkedIn, Computrabajo) llegan sin descripción. En su tarjeta, *Pegar la descripción para que la IA la evalúe* guarda el texto que copies de la oferta, recalcula la afinidad y pide la nota a la IA en el momento (puede tardar si Gemini está saturado). La ingesta ya no reemplaza esa descripción.
 - **Exportar CSV:** el botón *Exportar CSV* (o `/export.csv?...`) descarga las ofertas con los filtros actuales, separadas por `;` y en UTF-8 con BOM para que Excel en español las abra bien.
 - La ingesta nunca sobrescribe el estado, las notas ni las fechas de seguimiento.
 

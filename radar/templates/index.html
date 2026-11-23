@@ -150,7 +150,7 @@
       {% set anchor = "job-" ~ loop.index %}
       {% set fit = j.fit or 0 %}
       <li id="{{ anchor }}">
-      <article class="job {{ 'fit-hi' if fit >= 70 else ('fit-mid' if fit >= 45 else 'fit-lo') }}{% if j.status != 'encontrada' %} has-status{% endif %}{% if j.status == 'descartada' %} is-discarded{% endif %}"
+      <article id="oferta-{{ j.id }}" class="job {{ 'fit-hi' if fit >= 70 else ('fit-mid' if fit >= 45 else 'fit-lo') }}{% if j.status != 'encontrada' %} has-status{% endif %}{% if j.status == 'descartada' %} is-discarded{% endif %}"
                tabindex="-1" data-status="{{ j.status }}" aria-labelledby="title-{{ loop.index }}">
         <header>
           <div class="ring">
@@ -243,6 +243,20 @@
           </form>
         </details>
 
+        {% if j.source in paste_sources or j.description_manual %}
+        <details class="notes paste">
+          <summary>{% if j.description_manual %}Descripción pegada por ti · cambiarla{% else %}Pegar la descripción para que la IA la evalúe{% endif %}</summary>
+          <form method="post" action="/jobs/{{ j.id }}/description" class="paste-desc">
+            {# Ancla estable: tras la nota nueva la oferta puede cambiar de posición en la lista #}
+            <input type="hidden" name="back" value="{{ back }}#oferta-{{ j.id }}">
+            <label for="desc-{{ loop.index }}">La alerta del correo no trae la descripción. Abre la oferta, copia todo el texto (cargo, requisitos, modalidad…) y pégalo aquí.</label>
+            <textarea id="desc-{{ loop.index }}" name="description" rows="6" maxlength="20000" required
+                      placeholder="Acerca del empleo…">{{ j.description if j.description_manual else "" }}</textarea>
+            <button type="submit" class="btn-ghost btn-small">Guardar y evaluar con IA</button>
+          </form>
+        </details>
+        {% endif %}
+
         {% if j.description %}
         <details class="desc">
           <summary>Descripción completa</summary>
@@ -278,7 +292,7 @@
   </main>
 </div>
 
-<div id="live" class="live" role="status" aria-live="polite"></div>
+<div id="live" class="live{% if aviso %} is-visible{% endif %}" role="status" aria-live="polite">{{ aviso }}</div>
 
 <dialog id="keys-help" class="keys-help" aria-labelledby="keys-title">
   <h2 id="keys-title">Atajos de teclado</h2>

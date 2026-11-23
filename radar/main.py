@@ -6,7 +6,7 @@ from contextlib import asynccontextmanager
 from dataclasses import asdict, dataclass
 from datetime import datetime, timedelta, timezone
 from pathlib import Path
-from urllib.parse import urlencode, urlsplit
+from urllib.parse import parse_qsl, urlencode, urlsplit
 
 from fastapi import Depends, FastAPI, Form, HTTPException, Request
 from fastapi.middleware.trustedhost import TrustedHostMiddleware
@@ -16,10 +16,10 @@ from fastapi.templating import Jinja2Templates
 from sqlalchemy import func, or_, select
 from sqlalchemy.orm import Session
 
-from radar import config
+from radar import config, score
 from radar.db import SessionLocal, init_db
 from radar.models import STATUSES, Job
-from radar.relevance import extract_requirements, rank_value
+from radar.relevance import extract_requirements, fit, rank_value
 from radar.sources import ats, getonbrd, himalayas, jobicy, linkedin_mail
 from radar.sources.common import safe_url
 from radar.tracking import (apply_status, count_follow_ups, count_new, export_csv, follow_up,
@@ -33,6 +33,9 @@ SOURCE_NAMES[ats.REMOTEOK_SOURCE] = ats.REMOTEOK_NAME
 ORDERS = {"mejor": "Mejor encaje", "afinidad": "Afinidad", "nota": "Nota IA", "recientes": "Más recientes"}
 COLOMBIA_TZ = timezone(timedelta(hours=-5), "COT")  # Colombia no tiene horario de verano
 NOTES_MAX = 5000
+DESCRIPTION_MAX = 20_000
+# Fuentes cuyas ofertas llegan sin descripción (alertas por correo): el panel deja pegarla
+PASTE_SOURCES = {linkedin_mail.SOURCE, "computrabajo"}
 
 
 def _aware(dt: datetime) -> datetime:
@@ -74,6 +77,7 @@ templates.env.globals["es_nueva"] = es_nueva
 templates.env.globals["requisitos"] = extract_requirements
 templates.env.globals["safe_url"] = safe_url
 templates.env.globals["google_fonts"] = config.GOOGLE_FONTS
+templates.env.globals["paste_sources"] = PASTE_SOURCES
 
 
 @asynccontextmanager
@@ -268,6 +272,7 @@ def index(
     request: Request,
     filters: Filters = Depends(get_filters),
     limit: int = 60,
+    aviso: str = "",
     session: Session = Depends(get_session),
 ):
     limit = max(20, min(limit, 1000))
@@ -291,6 +296,7 @@ def index(
             "statuses": STATUSES,
             "orders": ORDERS,
             "stats": stats(session, since),
+            "aviso": aviso[:300],
         },
     )
 
@@ -404,6 +410,49 @@ def set_notes(
     if wants_json(request):
         return JSONResponse({"job": job_json(job)})
     return RedirectResponse(safe_back(back), status_code=303)
+
+
+def make_panel_scorer():
+    """Scorer para evaluar desde el panel (los tests lo reemplazan por uno falso)."""
+    return score.load_scorer()
+
+
+def with_notice(back: str, notice: str) -> str:
+    """`back` con ?aviso=… (el panel lo muestra una vez), conservando filtros y el #ancla."""
+    path, _, anchor = safe_back(back).partition("#")
+    path, _, query = path.partition("?")
+    params = [(k, v) for k, v in parse_qsl(query, keep_blank_values=True) if k != "aviso"]
+    url = f"{path}?{urlencode(params + [('aviso', notice)])}"
+    return f"{url}#{anchor}" if anchor else url
+
+
+@app.post("/jobs/{job_id:path}/description")
+def set_description(
+    job_id: str,
+    description: str = Form(""),
+    back: str = Form("/"),
+    session: Session = Depends(get_session),
+):
+    """Guarda la descripción que pegaste (ofertas de alertas por correo) y la evalúa con IA ya."""
+    job = get_job(session, job_id)
+    text = description.replace("\r\n", "\n").strip()
+    if not text:
+        raise HTTPException(400, "Pega la descripción de la oferta")
+    if len(text) > DESCRIPTION_MAX:
+        raise HTTPException(400, f"La descripción no puede pasar de {DESCRIPTION_MAX} caracteres")
+    job.description, job.description_manual = text, True
+    job.fit, job.fit_reasons = fit(job)
+    # La nota anterior se hizo sin descripción: se borra para no mostrar un análisis viejo
+    job.score = job.score_data = job.score_cv_hash = job.scored_at = None
+    session.commit()
+    try:
+        result = score.score_one(session, job, make_panel_scorer())
+        notice = f"«{job.title}»: {result.score}/5, {result.recommendation}."
+    except Exception as e:  # sin key, sin red, cuota… la descripción ya quedó guardada
+        session.rollback()
+        notice = (f"Descripción guardada (afinidad {job.fit}), pero la IA no pudo evaluarla: {e}. "
+                  "Vuelve a intentarlo con el mismo botón.")
+    return RedirectResponse(with_notice(back, notice[:300]), status_code=303)
 
 
 @app.post("/jobs/{job_id:path}/follow-up")

@@ -75,8 +75,10 @@ def upsert_jobs(session: Session, jobs: Iterable[dict]) -> tuple[int, int]:
         url = safe_url(raw.get("url"))
         if url is None:  # javascript:, data:… acabarían en un href del panel
             continue
+        job = session.get(Job, raw["id"])
+        if job is not None and job.description_manual:  # la pegaste tú: manda sobre la de la fuente
+            raw = {**raw, "description": job.description}
         data = _with_derived({**raw, "url": url})
-        job = session.get(Job, data["id"])
         if job is None:
             dup = session.scalar(select(Job.id).where(Job.dedupe_key == data["dedupe_key"],
                                                       Job.source != data["source"]).limit(1))
