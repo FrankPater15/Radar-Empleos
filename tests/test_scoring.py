@@ -7,7 +7,7 @@ from sqlalchemy.pool import StaticPool
 
 from radar.db import init_db
 from radar.ingest import upsert_jobs
-from radar.models import Job
+from radar.models import Job, utcnow
 from radar.score import pending_jobs, score_pending
 from radar.scoring import JobScore, Scorer, ScoringError, job_prompt
 
@@ -42,9 +42,9 @@ def session():
     init_db(engine)
     with sessionmaker(bind=engine, expire_on_commit=False)() as s:
         upsert_jobs(s, [
-            sample(id="getonbrd:a", external_id="a", open_to_colombia=True, title="A"),
-            sample(id="getonbrd:b", external_id="b", open_to_colombia=True, title="B"),
-            sample(id="getonbrd:c", external_id="c", open_to_colombia=False, title="C"),
+            sample(id="getonbrd:a", external_id="a", open_to_colombia=True, title="A", published_at=utcnow()),
+            sample(id="getonbrd:b", external_id="b", open_to_colombia=True, title="B", published_at=utcnow()),
+            sample(id="getonbrd:c", external_id="c", open_to_colombia=False, title="C", published_at=utcnow()),
         ])
         yield s
 
