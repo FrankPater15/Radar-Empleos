@@ -305,3 +305,94 @@ def test_extract_requirements_usa_cache_y_se_invalida(monkeypatch):
     monkeypatch.setattr(relevance.config, "ENGLISH_LEVEL", "C1")
     assert not any("inglés" in x for x in relevance.extract_requirements(j)["bloqueadores"])
     assert len(llamadas) == 3
+
+
+# ---------- 8. Scoring: ofertas "veneno" y excepciones inesperadas ----------
+from radar import config as _config  # noqa: E402
+from radar.score import pending_jobs, score_pending  # noqa: E402
+from radar.scoring import GeminiScorer, ScoringError  # noqa: E402
+from tests.test_scoring import gemini_client, js  # noqa: E402,F401  (fixture session incluida abajo)
+from tests.test_scoring import session  # noqa: E402,F401
+
+
+class ScorerQueFalla:
+    """Scorer no-lotes: una oferta siempre devuelve error de oferta, otra revienta con un error raro."""
+
+    cv_hash = "cv1"
+    model = "fake"
+
+    def __init__(self, errores):
+        self.errores = errores
+        self.llamadas = []
+
+    def score(self, job):
+        self.llamadas.append(job.id)
+        err = self.errores.get(job.id)
+        if err is not None:
+            raise err
+        return js(4)
+
+
+def test_oferta_veneno_deja_de_reintentarse(session):
+    errores = {"getonbrd:a": ScoringError("JSON inválido de Gemini para getonbrd:a")}
+    scorer = ScorerQueFalla(errores)
+    for _dia in range(_config.SCORE_MAX_FAILURES):
+        score_pending(session, scorer, limit=10, log=lambda *_: None, batch_size=1)
+    a = session.get(Job, "getonbrd:a")
+    assert a.score is None and a.score_data["score_failures"] == _config.SCORE_MAX_FAILURES
+    assert "summary" not in a.score_data
+    # b se puntuó el primer día; a ya no vuelve a la cola ni gasta cuota
+    assert pending_jobs(session, "cv1", 10) == []
+    assert scorer.llamadas.count("getonbrd:a") == _config.SCORE_MAX_FAILURES
+    scorer.llamadas.clear()
+    assert score_pending(session, scorer, limit=10, log=lambda *_: None, batch_size=1) == (0, 0)
+    assert scorer.llamadas == []
+    # con otro CV vuelve a intentarse, y --retry-failed la fuerza
+    assert [j.id for j in pending_jobs(session, "cv2", 10, rescore=True)] == ["getonbrd:a", "getonbrd:b"]
+    assert [j.id for j in pending_jobs(session, "cv1", 10, retry_failed=True)] == ["getonbrd:a"]
+    # el panel no pinta la sección de IA de una oferta sin nota (solo la de b, que sí la tiene)
+    assert _render_ai(session, "getonbrd:a").count('class="ai-summary"') == 1
+
+
+def _render_ai(session, job_id):
+    main.app.dependency_overrides[main.get_session] = lambda: session
+    try:
+        return TestClient(main.app, base_url=LOCAL).get("/").text
+    finally:
+        main.app.dependency_overrides.clear()
+
+
+def test_fallos_transitorios_no_cuentan_ni_abortan_el_lote(session):
+    errores = {"getonbrd:a": ScoringError("Sin conexión", transient=True),
+               "getonbrd:b": RuntimeError("bug raro del SDK")}
+    scorer = ScorerQueFalla(errores)
+    ok, fallidas = score_pending(session, scorer, limit=10, log=lambda *_: None, batch_size=1)
+    assert (ok, fallidas) == (0, 2)  # la excepción no-ScoringError no abortó la corrida
+    assert scorer.llamadas == ["getonbrd:a", "getonbrd:b"]
+    a, b = session.get(Job, "getonbrd:a"), session.get(Job, "getonbrd:b")
+    assert a.score_data is None  # fallo de red: no cuenta
+    assert b.score_data["score_failures"] == 1  # error raro: sí cuenta
+
+
+def test_lote_con_excepcion_inesperada_no_aborta(session):
+    class Lotes:
+        cv_hash, model = "cv1", "fake"
+
+        def score_batch(self, chunk):
+            raise RuntimeError("fallo a mitad de lote")
+
+    assert score_pending(session, Lotes(), limit=10, log=lambda *_: None, batch_size=6) == (0, 2)
+    assert session.get(Job, "getonbrd:a").score_data["score_failures"] == 1
+
+
+def test_score_batch_conserva_resultados_si_una_oferta_revienta():
+    jobs = [Job(id=f"x:{i}", title=f"t{i}") for i in range(3)]
+    ok = js(3).model_dump_json()
+    batch = '{"items": [{"id": "j1", "score": 3, "recommendation": "postular", "summary": "s", "matched": [], "missing": [], "red_flags": []}]}'
+    client = gemini_client(batch, RuntimeError("boom"), ok)
+    scorer = GeminiScorer("cv", client=client, fallback_model="", rpm=0, sleep=lambda s: None)
+    out = scorer.score_batch(jobs)
+    assert out[0].score == 3 and isinstance(out[1], ScoringError) and out[2].score == 3
+    # la API caída por completo (excepción rara) tampoco revienta
+    scorer = GeminiScorer("cv", client=gemini_client(RuntimeError("x")), fallback_model="", rpm=0)
+    assert all(isinstance(r, ScoringError) for r in scorer.score_batch(jobs))

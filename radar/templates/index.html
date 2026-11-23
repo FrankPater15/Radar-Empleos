@@ -201,7 +201,7 @@
         </ul>
         {% endif %}
 
-        {% if j.score_data %}
+        {% if j.score_data and j.score_data.summary %}
         <div class="ai">
           <p class="ai-summary">{{ j.score_data.summary }}</p>
           <div class="ai-cols">

@@ -100,6 +100,9 @@ GEMINI_RPM = int(os.getenv("GEMINI_RPM", "10"))
 GEMINI_PRIMARY_RETRY_EVERY = int(os.getenv("GEMINI_PRIMARY_RETRY_EVERY", "10"))
 # No gastar IA en ofertas publicadas hace mÃ¡s de N dÃ­as
 MAX_AGE_DAYS = int(os.getenv("MAX_AGE_DAYS", "90"))
+# Una oferta que falla N veces (JSON inválido, rechazo del modelo…) con el mismo CV deja de
+# reintentarse cada día y de gastar cuota; `python -m radar.score --retry-failed` la reintenta
+SCORE_MAX_FAILURES = int(os.getenv("SCORE_MAX_FAILURES", "3"))
 # rank_value: dÃ­as sin descuento por antigÃ¼edad y vida media despuÃ©s
 RANK_FRESH_DAYS = 14
 RANK_HALF_LIFE_DAYS = 30
