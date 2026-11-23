@@ -6,9 +6,10 @@ from contextlib import asynccontextmanager
 from dataclasses import asdict, dataclass
 from datetime import datetime, timedelta, timezone
 from pathlib import Path
-from urllib.parse import urlencode
+from urllib.parse import urlencode, urlsplit
 
 from fastapi import Depends, FastAPI, Form, HTTPException, Request
+from fastapi.middleware.trustedhost import TrustedHostMiddleware
 from fastapi.responses import HTMLResponse, JSONResponse, RedirectResponse, Response
 from fastapi.staticfiles import StaticFiles
 from fastapi.templating import Jinja2Templates
@@ -78,6 +79,46 @@ async def lifespan(_: FastAPI):
 
 
 app = FastAPI(title="Radar de Empleo CO", lifespan=lifespan)
+
+# El panel no tiene login: solo escucha en local y rechaza peticiones que no vengan de él mismo.
+ALLOWED_HOSTS = ["127.0.0.1", "localhost"]
+SAFE_METHODS = {"GET", "HEAD", "OPTIONS"}
+SECURITY_HEADERS = {
+    "X-Frame-Options": "DENY",
+    "Referrer-Policy": "no-referrer",
+    "X-Content-Type-Options": "nosniff",
+}
+
+
+def _foreign_origin(value: str, host: str) -> bool:
+    """True si un Origin/Referer no apunta al propio panel (mismo host:puerto y host permitido)."""
+    parts = urlsplit(value)
+    return parts.scheme not in ("http", "https") or parts.hostname not in ALLOWED_HOSTS or parts.netloc != host
+
+
+def _is_cross_site(request: Request) -> bool:
+    """CSRF: un POST con Origin/Referer ajeno o Sec-Fetch-Site distinto de same-origin/none se rechaza.
+    Sin esas cabeceras (curl, tests locales) se acepta: el Host ya lo validó TrustedHostMiddleware."""
+    h = request.headers
+    if h.get("sec-fetch-site", "same-origin") not in ("same-origin", "none"):
+        return True
+    host = h.get("host", "")
+    if "origin" in h:
+        return _foreign_origin(h["origin"], host)
+    return "referer" in h and _foreign_origin(h["referer"], host)
+
+
+@app.middleware("http")
+async def security_middleware(request: Request, call_next):
+    if request.method not in SAFE_METHODS and _is_cross_site(request):
+        response = JSONResponse({"detail": "Origen no permitido"}, status_code=403)
+    else:
+        response = await call_next(request)
+    response.headers.update(SECURITY_HEADERS)
+    return response
+
+
+app.add_middleware(TrustedHostMiddleware, allowed_hosts=ALLOWED_HOSTS)  # el último en añadirse va primero
 app.mount("/static", StaticFiles(directory=HERE / "static"), name="static")
 
 
