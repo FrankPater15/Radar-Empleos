@@ -191,6 +191,16 @@
         </ul>
         {% endif %}
 
+        {% set req = requisitos(j) %}
+        {% set ai_blockers = (j.score_data.blockers if j.score_data and j.score_data.blockers else []) %}
+        {% set all_blockers = req.bloqueadores + ai_blockers|reject("in", req.bloqueadores)|list %}
+        {% if all_blockers or req.alertas_estafa %}
+        <ul class="blockers" aria-label="Bloqueadores detectados">
+          {% for b in all_blockers %}<li>⚠ {{ b }}</li>{% endfor %}
+          {% for a in req.alertas_estafa %}<li>⚠ Posible estafa: {{ a }}</li>{% endfor %}
+        </ul>
+        {% endif %}
+
         {% if j.score_data %}
         <div class="ai">
           <p class="ai-summary">{{ j.score_data.summary }}</p>

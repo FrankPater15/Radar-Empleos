@@ -17,6 +17,7 @@ from sqlalchemy.orm import Session
 
 from radar.db import SessionLocal, init_db
 from radar.models import STATUSES, Job
+from radar.relevance import extract_requirements, rank_value
 from radar.sources import getonbrd, himalayas, jobicy
 from radar.tracking import (apply_status, count_follow_ups, count_new, export_csv, follow_up,
                             follow_up_due_clause, new_since)
@@ -66,6 +67,7 @@ templates.env.filters["fecha"] = fecha
 templates.env.tests["vencido"] = vencido
 templates.env.globals["SOURCE_NAMES"] = SOURCE_NAMES
 templates.env.globals["es_nueva"] = es_nueva
+templates.env.globals["requisitos"] = extract_requirements
 
 
 @asynccontextmanager
@@ -132,7 +134,11 @@ def query_jobs(
         stmt = stmt.order_by(Job.fit.desc().nulls_last(), recent)
     elif order == "recientes":
         stmt = stmt.order_by(recent)
-    else:  # "mejor" y "nota": nota de IA primero; sin nota, por afinidad
+    elif order == "mejor":  # valor combinado: IA o prefiltro, bloqueadores y antigüedad
+        rows = list(session.scalars(stmt))
+        rows.sort(key=rank_value, reverse=True)  # estable: empates conservan el orden de la BD
+        return rows[:limit]
+    else:  # "nota": nota de IA primero; sin nota, por afinidad
         stmt = stmt.order_by(Job.score.desc().nulls_last(), Job.fit.desc().nulls_last(), recent)
     stmt = stmt.limit(limit)
     return list(session.scalars(stmt))
