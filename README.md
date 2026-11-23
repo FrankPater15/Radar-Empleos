@@ -167,7 +167,36 @@ Para añadir una empresa, agrega una entrada `{"name": "...", "ats": "...", "tok
 
 Antes de añadirla, comprueba que responde y tiene ofertas para Colombia:
 `python -c "from radar.sources import ats; from radar.sources.common import make_client; print(len(ats.fetch_company(make_client(), {'name':'X','ats':'lever','token':'slug'})))"`.
-Hay una pausa de 1 s entre empresas y cada una falla por separado.
+Los proveedores se consultan a la vez; dentro de cada uno, las empresas van de a una con una pausa de 1 s,
+y cada empresa falla por separado.
+
+## Alertas por correo (fase 1b, en construcción)
+
+LinkedIn y Computrabajo no permiten scraping, pero sí te mandan alertas de empleo por correo. El radar
+las lee de **tu** Gmail con permiso de **solo lectura** (`gmail.readonly`): no borra, no marca y no envía nada.
+Por ahora solo conecta y guarda muestras; el lector de cada formato de alerta viene después.
+
+**1. Crear el cliente OAuth (una vez, ~10 min).** En [Google Cloud Console](https://console.cloud.google.com):
+
+1. Crea un proyecto (por ejemplo, "Radar Empleo").
+2. *APIs y servicios → Biblioteca* → busca **Gmail API** → **Habilitar**.
+3. *Google Auth Platform → Público*: tipo **Externo**, y en **Usuarios de prueba** agrega el correo donde
+   recibes las alertas.
+4. *Google Auth Platform → Clientes → Crear cliente*: tipo **App de escritorio** → descarga el JSON y
+   guárdalo como `secrets/gmail_credentials.json` (la carpeta `secrets/` está en `.gitignore`).
+
+**2. Autorizar y guardar muestras:**
+
+```powershell
+python -m radar.sources.gmail_alerts --auth          # abre el navegador; elige la cuenta de las alertas
+python -m radar.sources.gmail_alerts --muestras 10   # guarda 10 alertas en secrets/gmail_muestras/
+```
+
+Google mostrará "Google no verificó esta app": es tu propia app, elige *Continuar*. Mientras el proyecto
+esté en modo **Prueba**, Google vence la autorización a los 7 días y hay que repetir `--auth`.
+
+En `.env`, `GMAIL_ACCOUNT` sugiere la cuenta al autorizar y `GMAIL_QUERY` es la búsqueda de Gmail
+(por defecto `from:(linkedin.com OR computrabajo) newer_than:30d`).
 
 ## Arquitectura
 

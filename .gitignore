@@ -11,3 +11,5 @@ logs/
 *.db-shm
 .claude/worktrees/
 .claude/settings.local.json
+# Credenciales OAuth, token y correos de muestra de Gmail
+secrets/

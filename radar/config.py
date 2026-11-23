@@ -119,3 +119,9 @@ if not os.getenv("SEARCH_QUERIES"):
 # Fuente ATS: tableros publicos de empresas (Greenhouse, Lever, Ashby, SmartRecruiters, Workable, BambooHR)
 ATS_COMPANIES_FILE = str(project_path(os.getenv("ATS_COMPANIES_FILE", "radar/sources/ats_companies.json")))
 ATS_ENABLED = os.getenv("ATS_ENABLED", "1").strip().lower() not in ("0", "false", "no", "")
+# Fase 1b: alertas de empleo de tu Gmail (OAuth, solo lectura). secrets/ esta en .gitignore
+GMAIL_CREDENTIALS_FILE = project_path(os.getenv("GMAIL_CREDENTIALS_FILE", "secrets/gmail_credentials.json"))
+GMAIL_TOKEN_FILE = project_path(os.getenv("GMAIL_TOKEN_FILE", "secrets/gmail_token.json"))
+GMAIL_SAMPLES_DIR = project_path(os.getenv("GMAIL_SAMPLES_DIR", "secrets/gmail_muestras"))
+GMAIL_ACCOUNT = os.getenv("GMAIL_ACCOUNT", "").strip()  # sugiere esta cuenta al autorizar
+GMAIL_QUERY = os.getenv("GMAIL_QUERY", "from:(linkedin.com OR computrabajo) newer_than:30d")
