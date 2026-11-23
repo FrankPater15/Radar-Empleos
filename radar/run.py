@@ -3,6 +3,7 @@
 Uso:  python -m radar.run              (ingesta + 30 puntuaciones)
       python -m radar.run --limit 60   (más puntuaciones; la capa gratis de Gemini va lento)
       python -m radar.run --no-score   (solo ingesta)
+      python -m radar.run --no-notify  (sin aviso de escritorio al terminar)
 
 Pensado también para la tarea programada (pythonw.exe, sin consola): todo queda en logs/radar.log.
 Sin red, espera un poco y termina con código 0 (no es un error: se reintenta mañana).
@@ -13,10 +14,13 @@ import argparse
 import sys
 
 from radar import config
+from radar.db import SessionLocal, init_db
 from radar.ingest import run as ingest
 from radar.logsetup import setup_logging
 from radar.netcheck import wait_for_network
+from radar.notify import format_message, notify_desktop
 from radar.score import ScoreSetupError, score_cli
+from radar.tracking import count_new, finish_run, start_run
 
 
 def parse_args(argv: list[str] | None = None) -> argparse.Namespace:
@@ -26,6 +30,7 @@ def parse_args(argv: list[str] | None = None) -> argparse.Namespace:
     p.add_argument("--min-fit", type=int, default=config.MIN_FIT)
     p.add_argument("--no-score", action="store_true")
     p.add_argument("--log-file", default=str(config.LOG_FILE), help="archivo de log (con rotación)")
+    p.add_argument("--no-notify", action="store_true", help="no mostrar el aviso de escritorio")
     p.add_argument("--wait-network", type=int, default=config.WAIT_NETWORK_S,
                    help="segundos máximos esperando red antes de rendirse (0 = no esperar)")
     return p.parse_args(argv)
@@ -43,6 +48,9 @@ def main(argv: list[str] | None = None) -> int:
             logger.warning("Sin red: se omite la corrida de hoy")
             return 0
 
+        init_db()
+        with SessionLocal() as session:
+            run = start_run(session)
         errors: dict[str, str] = {}
         results = ingest([s.strip() for s in args.sources.split(",") if s.strip()], log=log, errors=errors)
         new = sum(n for n, _ in results.values())
@@ -57,6 +65,15 @@ def main(argv: list[str] | None = None) -> int:
                 logger.warning(f"Sin puntuación con IA: {e}")
             except Exception:
                 logger.exception("La puntuación con IA falló; la ingesta sí quedó guardada")
+
+        with SessionLocal() as session:
+            run = session.merge(run)
+            promising = count_new(session, run.started_at, promising_only=True)
+            finish_run(session, run, new, promising, errors)
+        title, body = format_message(new, promising)
+        log(body)
+        if not args.no_notify:
+            notify_desktop(title, body, log=log)
         log("=== Fin de la corrida ===")
         return 0
     except Exception:

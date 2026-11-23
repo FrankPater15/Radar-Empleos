@@ -54,3 +54,16 @@ class Job(Base):
     status: Mapped[str] = mapped_column(String(20), default="encontrada", index=True)
     first_seen_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utcnow)
     updated_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utcnow, onupdate=utcnow)
+
+
+class Run(Base):
+    """Cada corrida de radar.run: sirve para saber qué ofertas son "nuevas" en el panel."""
+
+    __tablename__ = "runs"
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True, autoincrement=True)
+    started_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utcnow, index=True)
+    finished_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+    new_jobs: Mapped[int | None] = mapped_column(Integer)
+    promising: Mapped[int | None] = mapped_column(Integer)
+    errors: Mapped[dict | None] = mapped_column(JSON)
