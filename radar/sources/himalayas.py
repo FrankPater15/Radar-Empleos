@@ -11,7 +11,7 @@ from urllib.parse import urlparse
 
 import httpx
 
-from radar.sources.common import geo_open_to_colombia, get_json, html_to_text, make_client, to_int
+from radar.sources.common import geo_open_to_colombia, get_json, html_to_text, make_client, parse_each, to_int
 
 SEARCH_URL = "https://himalayas.app/jobs/api/search"
 SOURCE = "himalayas"
@@ -53,7 +53,7 @@ def parse_job(j: dict) -> dict:
         "title": (j.get("title") or "(sin título)").strip(),
         "company": j.get("companyName"),
         "url": guid or "https://himalayas.app/jobs",
-        "category": cats[0].replace("-", " ") if cats else None,
+        "category": str(cats[0]).replace("-", " ") if cats else None,
         "seniority": _level(j.get("seniority")),
         "remote_modality": "fully_remote",
         # Sin restricciones = remoto desde cualquier país
@@ -74,11 +74,12 @@ def search(query: str, max_pages: int = 3, client: httpx.Client | None = None,
     try:
         for page in range(1, max_pages + 1):
             payload = get_json(client, SEARCH_URL, {"q": query, "country": country, "page": page})
+            if not isinstance(payload, dict):
+                break
             jobs = payload.get("jobs") or []
-            for j in jobs:
-                yield parse_job(j)
-            total = payload.get("totalCount") or 0
-            if not jobs or (payload.get("offset") or 0) + len(jobs) >= total:
+            yield from parse_each(jobs, parse_job, label="himalayas")
+            total = to_int(payload.get("totalCount")) or 0
+            if not isinstance(jobs, list) or not jobs or (to_int(payload.get("offset")) or 0) + len(jobs) >= total:
                 break
             time.sleep(delay_s)
     finally:

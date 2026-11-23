@@ -11,7 +11,7 @@ from typing import Iterator
 
 import httpx
 
-from radar.sources.common import get_json, html_to_text, make_client  # noqa: F401  (html_to_text se reexporta)
+from radar.sources.common import get_json, html_to_text, make_client, parse_each  # noqa: F401  (html_to_text se reexporta)
 
 BASE_URL = "https://www.getonbrd.com/api/v0"
 SOURCE = "getonbrd"
@@ -66,9 +66,12 @@ def _paginate(url: str, params: dict, max_pages: int, client: httpx.Client | Non
     try:
         for page in range(1, max_pages + 1):
             payload = get_json(client, url, {**params, "page": page, "expand": '["company"]'})
-            for item in payload.get("data", []):
-                yield parse_job(item, category_fallback=category_fallback)
-            if page >= (payload.get("meta") or {}).get("total_pages", page):
+            if not isinstance(payload, dict):
+                break
+            yield from parse_each(payload.get("data"), parse_job, label="getonbrd",
+                                  category_fallback=category_fallback)
+            meta = payload.get("meta")
+            if page >= (meta.get("total_pages", page) if isinstance(meta, dict) else page):
                 break
             time.sleep(delay_s)
     finally:

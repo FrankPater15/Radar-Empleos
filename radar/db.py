@@ -1,4 +1,5 @@
 from sqlalchemy import create_engine, event, inspect, text
+from sqlalchemy.exc import OperationalError
 from sqlalchemy.orm import DeclarativeBase, sessionmaker
 
 from radar.config import DATABASE_URL
@@ -56,4 +57,17 @@ def _add_missing_columns(bind) -> None:
             for col in table.columns:
                 if col.name not in existing:
                     col_type = col.type.compile(dialect=bind.dialect)
-                    conn.execute(text(f'ALTER TABLE {table.name} ADD COLUMN "{col.name}" {col_type}'))
+                    try:
+                        conn.execute(text(f'ALTER TABLE {table.name} ADD COLUMN "{col.name}" {col_type}'))
+                    except OperationalError as e:  # otro proceso (panel/tarea) la añadió a la vez
+                        if "duplicate column" not in str(e).lower():
+                            raise
+    _create_missing_indexes(bind)
+
+
+def _create_missing_indexes(bind) -> None:
+    """create_all no toca tablas existentes: las BD creadas antes de un índice (fit, score,
+    dedupe_key, follow_up_at…) se quedaban sin él y los filtros hacían escaneo completo."""
+    for table in Base.metadata.sorted_tables:
+        for index in table.indexes:
+            index.create(bind, checkfirst=True)

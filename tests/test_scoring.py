@@ -1,3 +1,4 @@
+from datetime import timedelta
 from types import SimpleNamespace
 
 import pytest
@@ -42,8 +43,8 @@ def session():
     init_db(engine)
     with sessionmaker(bind=engine, expire_on_commit=False)() as s:
         upsert_jobs(s, [
-            sample(id="getonbrd:a", external_id="a", open_to_colombia=True, title="A", published_at=utcnow()),
-            sample(id="getonbrd:b", external_id="b", open_to_colombia=True, title="B", published_at=utcnow()),
+            sample(id="getonbrd:a", external_id="a", open_to_colombia=True, title="A", published_at=utcnow()),  # a es más reciente que b: orden estable
+            sample(id="getonbrd:b", external_id="b", open_to_colombia=True, title="B", published_at=utcnow() - timedelta(minutes=5)),
             sample(id="getonbrd:c", external_id="c", open_to_colombia=False, title="C", published_at=utcnow()),
         ])
         yield s

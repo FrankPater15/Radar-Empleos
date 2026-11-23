@@ -127,7 +127,7 @@
 
   function openOffer() {
     const link = activeCard()?.querySelector("a.open");
-    if (link) window.open(link.href, "_blank", "noopener");
+    if (link && /^https?:$/.test(link.protocol)) window.open(link.href, "_blank", "noopener,noreferrer");
   }
 
   function toggleHelp() {

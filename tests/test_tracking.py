@@ -10,6 +10,8 @@ from sqlalchemy.orm import sessionmaker
 from sqlalchemy.pool import StaticPool
 
 from radar import main
+
+LOCAL = "http://127.0.0.1:8000"
 from radar.db import init_db
 from radar.ingest import upsert_jobs
 from radar.models import Job
@@ -105,7 +107,7 @@ def client(Session):
         run = start_run(s, now=datetime.now(timezone.utc) - timedelta(hours=1))
         upsert_jobs(s, [job(id="a:nueva", source="a", title="Oferta nueva QA", company="N")])
         finish_run(s, run, 1, 0)
-    yield TestClient(main.app), Session
+    yield TestClient(main.app, base_url=LOCAL), Session
     main.app.dependency_overrides.clear()
 
 

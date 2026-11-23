@@ -163,7 +163,34 @@ Evalúa CADA oferta contra el CV de forma independiente (no compares unas con ot
 
 
 class ScoringError(RuntimeError):
-    pass
+    """No se pudo puntuar una oferta. `transient`: fallo de red/cuota (no culpa de la oferta), que
+    no cuenta para dejar de reintentarla."""
+
+    def __init__(self, message: str = "", transient: bool = False):
+        super().__init__(message)
+        self.transient = transient
+
+
+_TRANSIENT_NAMES = ("connection", "timeout", "ratelimit", "overloaded", "internalserver", "unavailable")
+
+
+def is_transient(e: BaseException) -> bool:
+    """Excepciones de red, límite de uso o servidor caído (de anthropic, httpx, google…)."""
+    if isinstance(e, ScoringError):
+        return e.transient
+    if isinstance(e, (ConnectionError, TimeoutError, OSError)):
+        return True
+    status = getattr(e, "status_code", None) or getattr(e, "code", None)
+    if isinstance(status, int) and (status == 429 or status >= 500):
+        return True
+    return any(n in type(e).__name__.lower() for n in _TRANSIENT_NAMES)
+
+
+def as_scoring_error(e: BaseException) -> ScoringError:
+    """Convierte cualquier excepción en ScoringError para que no aborte el lote."""
+    if isinstance(e, ScoringError):
+        return e
+    return ScoringError(f"{type(e).__name__}: {e}", transient=is_transient(e))
 
 
 def _clamp(result: JobScore) -> JobScore:
@@ -297,19 +324,20 @@ class GeminiScorer:
                 if (e.code == 429 or (e.code or 0) >= 500) and attempt < self.max_retries:
                     self._sleep(min(60, 10 * 2 ** attempt))
                     continue
-                raise ScoringError(f"Gemini falló con {job.id}: {e.code} {e.status}") from e
+                raise ScoringError(f"Gemini falló con {job.id}: {e.code} {e.status}",
+                                   transient=e.code == 429 or (e.code or 0) >= 500) from e
             except (ConnectionError, TimeoutError, OSError) as e:
                 self._network_retry(job, attempt, e)
             except Exception as e:  # errores de red de httpx (p. ej. "Server disconnected")
                 if type(e).__module__.split(".")[0] not in ("httpx", "httpx2", "httpcore"):
                     raise
                 self._network_retry(job, attempt, e)
-        raise ScoringError(f"Gemini no respondió para {job.id}")
+        raise ScoringError(f"Gemini no respondió para {job.id}", transient=True)
 
     def _network_retry(self, job: Job, attempt: int, e: Exception) -> None:
         """Un corte de conexión no debe tumbar toda la corrida: espera y reintenta."""
         if attempt >= self.max_retries:
-            raise ScoringError(f"Sin conexión con Gemini para {job.id}: {e}") from e
+            raise ScoringError(f"Sin conexión con Gemini para {job.id}: {e}", transient=True) from e
         self._sleep(min(60, 5 * 2 ** attempt))
 
     def score(self, job: Job) -> JobScore:
@@ -339,8 +367,8 @@ class GeminiScorer:
         by_id = {f"j{i + 1}": j for i, j in enumerate(jobs)}
         try:
             response = self._generate(jobs[0], batch_prompt(by_id, desc_limit), self._batch_config)
-        except ScoringError as e:
-            return [e] * len(jobs)  # la API falló tras los reintentos: no insistir oferta por oferta
+        except Exception as e:  # la API falló tras los reintentos: no insistir oferta por oferta
+            return [as_scoring_error(e)] * len(jobs)
         got: dict[str, JobScore] = {}
         try:
             raw = json.loads(getattr(response, "text", None) or "{}")
@@ -358,8 +386,8 @@ class GeminiScorer:
     def _safe_score(self, job: Job) -> JobScore | ScoringError:
         try:
             return self.score(job)
-        except ScoringError as e:
-            return e
+        except Exception as e:  # una oferta rara no debe perder las demás del lote
+            return as_scoring_error(e)
 
 
 def make_scorer(cv_text: str, provider: str | None = None):

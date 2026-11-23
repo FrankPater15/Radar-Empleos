@@ -5,9 +5,11 @@
   <meta name="viewport" content="width=device-width, initial-scale=1">
   <meta name="color-scheme" content="light dark">
   <title>Radar de Empleo CO</title>
+  {% if google_fonts %}
   <link rel="preconnect" href="https://fonts.googleapis.com">
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
   <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Bricolage+Grotesque:opsz,wght@12..96,500..800&family=Instrument+Sans:wght@400..700&family=JetBrains+Mono:wght@500;700&display=swap">
+  {% endif %}
   <link rel="stylesheet" href="{{ url_for('static', path='style.css') }}">
   <script src="{{ url_for('static', path='keys.js') }}" defer></script>
 </head>
@@ -162,7 +164,7 @@
               <span class="src src-{{ j.source }}">{{ SOURCE_NAMES.get(j.source, j.source) }}</span>
               <span>{{ j.company or "Empresa no indicada" }}</span>
             </p>
-            <h2 id="title-{{ loop.index }}"><a href="{{ j.url }}" target="_blank" rel="noopener">{{ j.title }}</a></h2>
+            <h2 id="title-{{ loop.index }}">{% if safe_url(j.url) %}<a href="{{ j.url }}" target="_blank" rel="noopener noreferrer">{{ j.title }}</a>{% else %}{{ j.title }}{% endif %}</h2>
             <ul class="facts">
               {% if j.seniority %}<li>{{ j.seniority }}</li>{% endif %}
               {% if j.remote_modality %}<li>{{ modality.get(j.remote_modality, j.remote_modality) }}</li>{% endif %}
@@ -201,7 +203,7 @@
         </ul>
         {% endif %}
 
-        {% if j.score_data %}
+        {% if j.score_data and j.score_data.summary %}
         <div class="ai">
           <p class="ai-summary">{{ j.score_data.summary }}</p>
           <div class="ai-cols">
@@ -256,7 +258,7 @@
             {% endfor %}
             <button name="status" value="encontrada" class="undo" title="Volver a 'encontrada'" {% if j.status == "encontrada" %}hidden{% endif %}>↺ Deshacer</button>
           </form>
-          <a class="open" href="{{ j.url }}" target="_blank" rel="noopener">Ver oferta<span class="visually-hidden"> {{ j.title }}</span> ↗</a>
+          {% if safe_url(j.url) %}<a class="open" href="{{ j.url }}" target="_blank" rel="noopener noreferrer">Ver oferta<span class="visually-hidden"> {{ j.title }}</span> ↗</a>{% endif %}
         </footer>
       </article>
       </li>

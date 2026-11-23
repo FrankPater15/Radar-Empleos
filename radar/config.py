@@ -74,6 +74,8 @@ SKILLS = _list(
     "microsoft graph,express,tailwind,vite,azure",
 )
 MIN_FIT = int(os.getenv("MIN_FIT", "45"))
+# Panel: cargar las tipografías de Google Fonts (contacta a Google en cada visita). 0 = fuentes del sistema
+GOOGLE_FONTS = os.getenv("GOOGLE_FONTS", "1").strip().lower() not in ("0", "false", "no", "off")
 
 # PuntuaciÃ³n con IA (fase 2). Credenciales en .env: GEMINI_API_KEY o ANTHROPIC_API_KEY
 CV_PATH = str(project_path(os.getenv("CV_PATH", "cv/cv_maestro.md")))
@@ -100,6 +102,9 @@ GEMINI_RPM = int(os.getenv("GEMINI_RPM", "10"))
 GEMINI_PRIMARY_RETRY_EVERY = int(os.getenv("GEMINI_PRIMARY_RETRY_EVERY", "10"))
 # No gastar IA en ofertas publicadas hace mÃ¡s de N dÃ­as
 MAX_AGE_DAYS = int(os.getenv("MAX_AGE_DAYS", "90"))
+# Una oferta que falla N veces (JSON inválido, rechazo del modelo…) con el mismo CV deja de
+# reintentarse cada día y de gastar cuota; `python -m radar.score --retry-failed` la reintenta
+SCORE_MAX_FAILURES = int(os.getenv("SCORE_MAX_FAILURES", "3"))
 # rank_value: dÃ­as sin descuento por antigÃ¼edad y vida media despuÃ©s
 RANK_FRESH_DAYS = 14
 RANK_HALF_LIFE_DAYS = 30

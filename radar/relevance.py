@@ -33,8 +33,8 @@ def _rx(words: str) -> re.Pattern:
     return re.compile(rf"(?<![a-z0-9])(?:{words})(?![a-z0-9])")
 
 
-JUNIOR = _rx(r"junior|jr\.?|trainee|intern|internship|pasante|pasantia|practicante|practica|"
-             r"aprendiz|apprentice|entry[- ]level|graduate|recien egresado|sin experiencia|semillero|nivel inicial|level i")
+JUNIOR = _rx(r"juniors?|jr\.?|trainees?|interns?|internships?|pasantes?|pasantias?|practicantes?|practicas?|"
+             r"aprendices|aprendiz|apprentices?|entry[- ]level|graduate|recien egresado|sin experiencia|semillero|nivel inicial|level i")
 SEMI = _rx(r"semi[- ]?senior|semi[- ]?sr|ssr|mid[- ]?level|intermedio|nivel ii|level ii")
 SENIOR = _rx(r"senior|sr\.?|lead|lider|tech lead|staff|principal|head|director|manager|gerente|"
              r"arquitecto|architect|expert|experto|vp")
@@ -63,9 +63,9 @@ CORE_DEV = _rx(r"desarrollador(?:a|es)?|developers?|programador(?:a|es)?|softwar
 ASSOCIATE = _rx(r"associate|asociado|ayudante|auxiliar")
 REQ_CODE = re.compile(r"(?<![a-z0-9])(?:jr|req|r)-?\d{3,}")
 # "3 años", "3+ years", "1-3 años", "2 a 4 years": el grupo 2 es el máximo del rango
-YEARS = re.compile(r"(\d{1,2})\s*\+?\s*(?:(?:-|–|a|to)\s*(\d{1,2})\s*)?(?:\+\s*)?(?:anos|years?|yrs)")
+YEARS = re.compile(r"(\d{1,2})\s*\+?\s*(?:(?:-|–|a|to)\s*(\d{1,2})\s*)?(?:\+\s*)?(?:anos?|years?|yrs)(?![a-z])")
 # Aviso multinivel ("Junior 0–2 years … Mid … Senior") o señal explícita de entrada
-MULTI_JR = re.compile(r"junior\W{0,5}\(?\s*0\s*(?:-|–|a|to)\s*[12]\s*(?:anos|years?)|early[- ]career|"
+MULTI_JR = re.compile(r"junior\W{0,5}\(?\s*0\s*(?:-|–|a|to)\s*[12]\s*(?:anos?|years?)|early[- ]career|"
                       r"entry[- ]level|new grad|recien egresad")
 ENGLISH_HIGH = _rx(r"c1|c2|b2\+?|fluent english|english fluency|fluent in english|advanced english|"
                    r"ingles avanzado|ingles fluido|bilingue|bilingual|native english|"
@@ -74,12 +74,21 @@ ENGLISH_MID = _rx(r"good english|english (?:level:? )?(?:b1|b2)|intermediate eng
                   r"upper[- ]intermediate|ingles (?:intermedio|conversacional|b1|b2)|english.{0,25}(?:required|requerido|indispensable)")
 ENGLISH_LOW = _rx(r"ingles (?:deseable|basico|no excluyente|opcional)|english (?:is a plus|nice to have)|basic english")
 B1_B2 = re.compile(r"b1\s*(?:-|–|/|a|to)\s*b2")  # "B1–B2" es intermedio, no alto
+# Filipinas solo cuenta si el aviso exige residir/trabajar/ser de allá: una mención suelta
+# ("tenemos oficinas en Filipinas, EE. UU. y Brasil") no restringe la oferta.
+_PH = r"(?:the )?(?:philippines|filipin\w+)"
+_PHILIPPINES = (rf"(?:based|located|residing|living|resid\w+|work\w*|hiring|available|open|candidates?|applicants?)"
+                rf"\s+(?:\w+\s+){{0,3}}?(?:in|from|to|within)\s+{_PH}|"
+                rf"{_PH}[- ]based|philippines? (?:only|residents?|nationals?)|"
+                rf"filipino (?:nationals?|citizens?|residents?|locals?|candidates?|applicants?|only)|"
+                rf"exclusiv\w*(?: only)? (?:to|for) (?:filipino|the philippines)|"
+                rf"(?:citizens?|nationals?) of {_PH}|(?:residentes?|ubicad\w+) en filipinas")
 LOC_RESTRICTED = re.compile(
     r"residents? of|must (?:be )?(?:reside|live|located|based) in|"
     r"only (?:open|available) to (?:candidates|residents) (?:in|from)|"
     r"exclusiv\w+ (?:para|for|to) (?:residentes|residents)|(?:us|u\.s\.)[- ]based only|"
     r"must be (?:a )?(?:us|u\.s\.) citizen|authorized to work in the (?:us|united states|uk|eu)|"
-    r"philippines|filipin\w+|india only|based in (?:india|europe|the uk)")
+    r"india only|based in (?:india|europe|the uk)|" + _PHILIPPINES)
 OPEN_TO_US = re.compile(r"latam|latin america|latinoamerica|south america|americas|colombia")
 COUNTRY_NAMES = [
     ("Filipinas", re.compile(r"philippines|filipin")), ("EE. UU.", re.compile(r"(?<![a-z])(?:us|u\.s\.|united states|usa)(?![a-z])")),
@@ -138,10 +147,16 @@ def _getter(job):
     return (lambda k: job.get(k)) if isinstance(job, dict) else (lambda k: getattr(job, k, None))
 
 
+# Fin de frase: . ; ! ? o salto de línea, salvo el punto de una sigla ("U.S.", "e.g.", "i.e.")
+_SENT_END = re.compile(r"(?<!(?<![a-z])[a-z])\.|[\n;!?]")
+
+
 def _sentence(text: str, start: int, end: int) -> str:
-    a = max(text.rfind(c, 0, start) for c in ".\n;!?")
-    b = [i for i in (text.find(c, end) for c in ".\n;!?") if i != -1]
-    return text[a + 1:min(b) if b else len(text)]
+    a = -1
+    for m in _SENT_END.finditer(text, 0, start):
+        a = m.start()
+    b = _SENT_END.search(text, end)
+    return text[a + 1:b.start() if b else len(text)]
 
 
 def _country_restriction(body: str) -> str | None:
@@ -202,12 +217,56 @@ def _salary(get, body: str) -> dict | None:
     return {"min": lo, "max": hi, "moneda": cur, "fuente": "texto"}
 
 
+_REQ_CACHE: dict[tuple, dict] = {}
+_REQ_CACHE_MAX = 8192
+
+
+def _clone_req(req: dict) -> dict:
+    """Copia con las listas y dicts anidados propios: quien reciba el resultado puede modificarlo."""
+    return {**req, "alertas_estafa": list(req["alertas_estafa"]), "bloqueadores": list(req["bloqueadores"]),
+            "salario": dict(req["salario"]) if req["salario"] else None}
+
+
 def extract_requirements(job) -> dict:
+    """Requisitos de la oferta (ver `_extract_requirements`), con caché en memoria.
+
+    El orden "mejor" del panel lo calcula por cada oferta en cada petición (~2 s con 1.500
+    ofertas) y las regex no cambian mientras la oferta no cambie: la clave incluye el contenido
+    que lee la extracción (título, descripción, modalidad, salario) y la configuración de la que
+    depende (nivel de inglés, estudiante), así que editar la oferta o el CV invalida sola.
+    """
+    get = _getter(job)
+    desc = get("description")
+    key = (get("id"), get("title"), hash(desc) if desc else 0, len(desc or ""), get("remote_modality"),
+           get("min_salary"), get("max_salary"), get("salary_currency"),
+           getattr(config, "ENGLISH_LEVEL", None), getattr(config, "IS_STUDENT", None))
+    try:
+        hit = _REQ_CACHE.get(key)
+    except TypeError:  # algún campo no hashable: sin caché
+        return _extract_requirements(job)
+    if hit is None:
+        if len(_REQ_CACHE) >= _REQ_CACHE_MAX:
+            _REQ_CACHE.clear()
+        hit = _REQ_CACHE[key] = _extract_requirements(job)
+    return _clone_req(hit)
+
+
+EXPERIENCE_NEAR = 70  # caracteres entre "N años" y la palabra experiencia/experience
+
+
+def _near_experience(text: str, m: re.Match) -> bool:
+    """"5 años de experiencia", "experience: 3 years": la cifra va pegada a la palabra experiencia.
+    Una cifra suelta a 80 caracteres ("1 year" de un nivel, "6 years" de otro) no cuenta."""
+    return ("experien" in text[m.end():m.end() + EXPERIENCE_NEAR]
+            or "experien" in text[max(0, m.start() - EXPERIENCE_NEAR):m.start()])
+
+
+def _extract_requirements(job) -> dict:
     """Requisitos y bloqueadores de la oferta, extraídos con regex (sin IA).
 
     `job` puede ser un Job o un dict con los mismos campos. Devuelve un dict serializable:
 
-        anos_min / anos_max   años de experiencia pedidos (mínimo y máximo de los rangos), o None
+        anos_min / anos_max   años de experiencia pedidos en la primera mención junto a "experiencia" (mín. y máx. del rango), o None
         multinivel            aviso que abre a junior/mid/senior a la vez ("Junior 0–2 years …")
         entry                 dice "entry-level", "early career", "new grad" o "recién egresado"
         ingles                "alto" (B2+/fluido), "intermedio" (B1–B2, "good English") o None
@@ -234,16 +293,17 @@ def extract_requirements(job) -> dict:
     body_y = NUM_WORDS.sub(lambda m: _WORDS[m.group(0)], body)
     for m in YEARS.finditer(body_y):
         lo = int(m.group(1))
-        if 0 < lo < 20 and "experien" in body_y[max(0, m.start() - 80):m.end() + 80]:
+        if 0 < lo < 20 and _near_experience(body_y, m):
             lows.append(lo)
             highs.append(int(m.group(2)) if m.group(2) else lo)
-    multinivel = bool(re.search(r"junior\W{0,5}\(?\s*0\s*(?:-|–|a|to)\s*[12]\s*(?:anos|years?)", body))
+    multinivel = bool(re.search(r"junior\W{0,5}\(?\s*0\s*(?:-|–|a|to)\s*[12]\s*(?:anos?|years?)", body))
     entry = bool(MULTI_JR.search(body))
     if not lows and MONTHS.search(body):
         lows, highs = [0], [0]  # "6 meses de experiencia": menos de un año
     if lows:
-        anos_min = max(lows) if max(lows) <= 10 else min(lows)
-        anos_max = max(highs)
+        # La primera mención pegada a "experiencia" es el requisito general; las siguientes suelen ser
+        # otros niveles ("Senior track: 6 years") o deseables. Medido contra radar.db: mejor que el máximo.
+        anos_min, anos_max = lows[0], highs[0]
     else:
         anos_min = anos_max = None
 
