@@ -54,6 +54,11 @@ class Job(Base):
     status: Mapped[str] = mapped_column(String(20), default="encontrada", index=True)
     first_seen_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utcnow)
     updated_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utcnow, onupdate=utcnow)
+    # Seguimiento (también del usuario; no están en ingest.SOURCE_FIELDS)
+    notes: Mapped[str | None] = mapped_column(Text)
+    status_changed_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+    applied_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))  # 1.ª vez "enviada"
+    follow_up_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), index=True)
 
 
 class Run(Base):

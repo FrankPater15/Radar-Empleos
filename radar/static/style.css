@@ -345,6 +345,58 @@ progress.progress-ring::-moz-progress-bar { display: none; background: none; }
   .open { margin-left: 0; }
 }
 
+/* ---------- Seguimiento, notas y exportar ---------- */
+.kpis .kpi-amber { color: var(--amber); }
+.funnel .chip-follow { border-style: dashed; }
+.checks { margin: 0; padding: 0; border: 0; display: grid; gap: 6px; }
+.checks legend {
+  padding: 0; margin-bottom: 4px; color: var(--muted); font-size: 0.76rem; font-weight: 600;
+  text-transform: uppercase; letter-spacing: 0.05em;
+}
+.checks label { display: flex; align-items: center; gap: 8px; font-size: 0.9rem; cursor: pointer; }
+.checks input { width: 18px; height: 18px; margin: 0; }
+
+.results { display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between; gap: 8px; }
+.results p { margin: 0; }
+.btn-small { min-height: 32px; padding: 4px 12px; font-size: 0.82rem; }
+
+.badge-new {
+  padding: 1px 8px; border-radius: 999px; font: 700 0.68rem/1.6 var(--font-mono); text-transform: uppercase;
+  letter-spacing: 0.04em; background: var(--accent); color: var(--accent-ink);
+}
+
+.tracking {
+  display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between; gap: 8px;
+  padding: 8px 12px; border-radius: 10px; background: var(--surface-2); font-size: 0.86rem; color: var(--muted);
+}
+.tracking p { margin: 0; }
+.tracking.is-due { background: var(--amber-soft); color: var(--amber); }
+.tracking strong { color: var(--amber); }
+.follow-actions { display: flex; flex-wrap: wrap; gap: 6px; }
+.follow-actions button, .notes button {
+  padding: 4px 10px; border: 1px solid var(--line); border-radius: 999px; background: var(--surface);
+  font-size: 0.78rem; font-weight: 600; cursor: pointer;
+}
+.follow-actions button:hover, .notes button:hover { border-color: var(--accent); }
+
+.notes > summary {
+  display: inline-flex; align-items: center; gap: 0.5ch; cursor: pointer; list-style: none;
+  color: var(--muted); font-size: 0.88rem; font-weight: 600;
+}
+.notes > summary::-webkit-details-marker { display: none; }
+.notes > summary::before {
+  content: ""; width: 0.5em; height: 0.5em; border: solid currentColor; border-width: 0 2px 2px 0; rotate: -45deg;
+}
+.notes[open] > summary::before { rotate: 45deg; }
+.notes > summary:hover { color: var(--ink); }
+.notes .dot { width: 7px; height: 7px; border-radius: 50%; background: var(--accent); }
+.notes form { display: grid; gap: 8px; justify-items: start; margin-top: 8px; }
+.notes textarea {
+  width: 100%; min-height: 72px; padding: 8px 10px; border: 1px solid var(--line); border-radius: 10px;
+  background: var(--bg); color: inherit; font: inherit; font-size: 0.9rem; resize: vertical;
+}
+.notes textarea:focus { border-color: var(--accent); }
+
 .empty { padding: 32px; border: 1px dashed var(--line); border-radius: var(--radius); text-align: center; color: var(--muted); }
 .empty b { color: var(--ink); }
 code { font-family: var(--font-mono); font-size: 0.88em; padding: 1px 6px; border-radius: 6px; background: var(--surface-2); }

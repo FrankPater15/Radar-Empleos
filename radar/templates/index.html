@@ -23,10 +23,11 @@
     </span>
   </a>
   <dl class="kpis">
+    <div><dt><a href="/?nuevas=1">Nuevas</a></dt><dd class="kpi-accent" title="Desde la última corrida, {{ new_since|fecha }}">{{ stats.new }}</dd></div>
     <div><dt>Abiertas a Colombia</dt><dd>{{ stats.colombia }}</dd></div>
     <div><dt><a href="/?min_fit=60&amp;order=afinidad">Prometedoras</a></dt><dd class="kpi-accent">{{ stats.promising }}</dd></div>
     <div><dt><a href="/?min_score=4">Nota IA ≥ 4</a></dt><dd>{{ stats.top }}</dd></div>
-    <div><dt>Puntuadas con IA</dt><dd>{{ stats.scored }}</dd></div>
+    <div><dt><a href="/?seguimiento=1">Seguimiento pendiente</a></dt><dd{% if stats.follow_ups %} class="kpi-amber"{% endif %}>{{ stats.follow_ups }}</dd></div>
   </dl>
 </header>
 
@@ -36,6 +37,8 @@
     <li><a href="/?status={{ s }}" class="st-{{ s }}" {% if filters.status == s %}aria-current="page"{% endif %}>
       <span>{{ s|capitalize }}</span><b>{{ stats.by_status[s] }}</b></a></li>
     {% endfor %}
+    <li><a href="/?seguimiento=1" class="chip-follow" {% if filters.seguimiento %}aria-current="page"{% endif %}>
+      <span>Seguimiento pendiente</span><b>{{ stats.follow_ups }}</b></a></li>
   </ol>
 </nav>
 
@@ -105,6 +108,11 @@
             {% for c in categories %}<option value="{{ c }}" {% if c == filters.category %}selected{% endif %}>{{ c }}</option>{% endfor %}
           </select>
         </label>
+        <fieldset class="field field-wide checks">
+          <legend>Mostrar solo</legend>
+          <label><input type="checkbox" name="nuevas" value="1" {% if filters.nuevas %}checked{% endif %}> Nuevas desde la última corrida</label>
+          <label><input type="checkbox" name="seguimiento" value="1" {% if filters.seguimiento %}checked{% endif %}> Seguimiento pendiente</label>
+        </fieldset>
         <label class="field field-wide">
           <span>Ordenar por</span>
           <select name="order">
@@ -121,9 +129,14 @@
   </aside>
 
   <main>
-    <p class="results">
-      <b>{{ jobs|length }}{% if has_more %}+{% endif %}</b> ofertas · {{ orders[filters.order]|lower }}
-    </p>
+    <div class="results">
+      <p>
+        <b>{{ jobs|length }}{% if has_more %}+{% endif %}</b> ofertas ·
+        {% if filters.seguimiento %}seguimiento más atrasado primero{% else %}{{ orders[filters.order]|lower }}{% endif %}
+        {% if filters.nuevas %}· nuevas desde el {{ new_since|fecha }}{% endif %}
+      </p>
+      <a class="btn-ghost btn-small" href="/export.csv{% if export_query %}?{{ export_query }}{% endif %}" download>Exportar CSV</a>
+    </div>
 
     <ol class="jobs">
     {% for j in jobs %}
@@ -139,6 +152,7 @@
           </div>
           <div class="heading">
             <p class="eyebrow">
+              {% if es_nueva(j.first_seen_at, new_since) %}<span class="badge-new">Nueva</span>{% endif %}
               <span class="src src-{{ j.source }}">{{ SOURCE_NAMES.get(j.source, j.source) }}</span>
               <span>{{ j.company or "Empresa no indicada" }}</span>
             </p>
@@ -181,6 +195,35 @@
           </div>
         </div>
         {% endif %}
+
+        {% if j.applied_at %}
+        <div class="tracking{% if j.follow_up_at is vencido and j.status == 'enviada' %} is-due{% endif %}">
+          <p>
+            Enviada el <time datetime="{{ j.applied_at.strftime('%Y-%m-%d') }}">{{ j.applied_at|fecha }}</time>
+            {% if j.follow_up_at and j.status == "enviada" %}
+            · {% if j.follow_up_at is vencido %}<strong>seguimiento pendiente desde el {{ j.follow_up_at|fecha }}</strong>{% else %}seguimiento el {{ j.follow_up_at|fecha }}{% endif %}
+            {% endif %}
+          </p>
+          {% if j.follow_up_at and j.status == "enviada" %}
+          <form method="post" action="/jobs/{{ j.id }}/follow-up" class="follow-actions">
+            <input type="hidden" name="back" value="{{ back }}#{{ anchor }}">
+            <button name="action" value="hecho">Seguimiento hecho</button>
+            <button name="action" value="posponer">Posponer 7 días</button>
+          </form>
+          {% endif %}
+        </div>
+        {% endif %}
+
+        <details class="notes"{% if j.notes %} open{% endif %}>
+          <summary>Notas{% if j.notes %} <span class="visually-hidden">(tiene notas)</span><span class="dot" aria-hidden="true"></span>{% endif %}</summary>
+          <form method="post" action="/jobs/{{ j.id }}/notes">
+            <input type="hidden" name="back" value="{{ back }}#{{ anchor }}">
+            <label class="visually-hidden" for="notes-{{ loop.index }}">Notas sobre {{ j.title }}</label>
+            <textarea id="notes-{{ loop.index }}" name="notes" rows="3" maxlength="5000"
+                      placeholder="Contacto, fecha de la entrevista, qué pedir…">{{ j.notes or "" }}</textarea>
+            <button type="submit" class="btn-ghost btn-small">Guardar notas</button>
+          </form>
+        </details>
 
         {% if j.description %}
         <details class="desc">
