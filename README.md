@@ -4,7 +4,7 @@ Agente personal de búsqueda de empleo para Colombia. Junta ofertas de fuentes *
 
 > **Human-in-the-loop y respeto de los ToS.** El radar **no** se postula solo ni hace scraping de LinkedIn ni de Computrabajo, porque sus términos lo prohíben. Busca, filtra y organiza. La postulación la haces tú.
 
-## Estado: Fase 1 (MVP)
+## Estado: Fases 1 y 2
 
 - [x] Ingesta desde la **API pública oficial de Get on Board** (categorías `programming`, `technical-support`, `sysadmin-devops-qa`)
 - [x] Base de datos con SQLAlchemy (SQLite en local; Postgres/Neon cambiando una variable)
@@ -13,6 +13,9 @@ Agente personal de búsqueda de empleo para Colombia. Junta ofertas de fuentes *
 - [x] Embudo de estados: encontrada → aprobada → enviada → entrevista → oferta/rechazo (o descartada)
 - [x] API JSON en `/api/jobs` (base para el panel React y la app Android)
 - [x] Tests (pytest)
+- [x] **Fase 2:** puntuación con Claude contra tu CV maestro: nota de 1 a 5, recomendación, requisitos cumplidos y faltantes, y señales de alerta (JSON estructurado validado con Pydantic)
+- [x] Solo puntúa lo pendiente: las ofertas ya puntuadas no se repiten, y si cambias el CV se vuelven a puntuar
+- [x] Panel: badge de nota, filtro "Nota ≥ N" y orden por mejor nota
 
 ## Hoja de ruta
 
@@ -20,7 +23,8 @@ Agente personal de búsqueda de empleo para Colombia. Junta ofertas de fuentes *
 |---|---|
 | 1 ✅ | Get on Board, base de datos y panel con filtros y estados |
 | 1b | Lectura de **tus propios correos de alertas** (Computrabajo, LinkedIn) con la API de Gmail (OAuth, solo lectura) |
-| 2 | Puntuación con LLM (nota de 1 a 5, requisitos cumplidos y faltantes, en JSON) y CV adaptado en PDF. **Regla: nunca inventar experiencia** |
+| 2 ✅ | Puntuación con LLM (nota de 1 a 5, requisitos cumplidos y faltantes, en JSON) |
+| 2b | CV adaptado por oferta en PDF. **Regla: nunca inventar experiencia** |
 | 3 | Login JWT, WebSockets ("nueva oferta 4,5/5" en tiempo real), métricas del embudo |
 | 4 | App Android (push + Aprobar/Descartar), despliegue en Render/Railway + Neon, video de demo |
 
@@ -41,6 +45,23 @@ uvicorn radar.main:app --reload
 ```
 
 Abre http://127.0.0.1:8000.
+
+### Puntuación con IA (fase 2)
+
+1. Copia `cv/cv_maestro.example.md` a `cv/cv_maestro.md` y complétalo con datos reales. Git lo ignora, así que no se sube.
+2. Crea una API key en https://platform.claude.com y ponla en `.env` como `ANTHROPIC_API_KEY=...`. La API se paga aparte de la suscripción Claude Pro.
+3. Ejecuta:
+
+```powershell
+python -m radar.score --limit 10     # empieza con pocas para ver el costo
+```
+
+**Opciones:** `--rescore` vuelve a puntuar todo; `--all-countries` incluye ofertas no abiertas a Colombia.
+
+**Cómo funciona:**
+- **Modelo:** por defecto `claude-opus-5-5` con `effort=low`. Se cambia con `SCORING_MODEL` y `SCORING_EFFORT`.
+- **Caché del CV:** el CV y la rúbrica van en el system prompt con caché de prompts, así que solo la oferta cambia entre llamadas.
+- **Rechazos:** si el modelo rechaza una petición, el fallback del servidor la reintenta con otro modelo.
 
 Opciones de la ingesta:
 
@@ -63,6 +84,8 @@ radar/
   models.py            modelo Job y estados del embudo
   sources/getonbrd.py  cliente de la API: paginación, pausa entre peticiones, HTML a texto
   ingest.py            upsert idempotente (no toca status ni first_seen_at)
+  scoring.py           rúbrica + llamada a Claude con salida estructurada (JobScore)
+  score.py             CLI: puntúa las pendientes y guarda una por una
   main.py              FastAPI: panel HTML, /api/jobs, cambio de estado
   templates/, static/  vista
 tests/                 tests de parser, upsert y endpoints, con una respuesta real de la API como fixture

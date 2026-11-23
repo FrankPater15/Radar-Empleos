@@ -30,6 +30,14 @@
     <option value="1" {% if filters.colombia == "1" %}selected{% endif %}>Colombia o 100 % remoto</option>
     <option value="0" {% if filters.colombia == "0" %}selected{% endif %}>Todos los países</option>
   </select>
+  <select name="min_score">
+    <option value="">Cualquier nota</option>
+    {% for n in [5, 4, 3] %}<option value="{{ n }}" {% if filters.min_score == n|string %}selected{% endif %}>Nota ≥ {{ n }}</option>{% endfor %}
+  </select>
+  <select name="order">
+    <option value="recientes" {% if filters.order != "nota" %}selected{% endif %}>Más recientes</option>
+    <option value="nota" {% if filters.order == "nota" %}selected{% endif %}>Mejor nota</option>
+  </select>
   <button type="submit">Filtrar</button>
 </form>
 
@@ -39,7 +47,10 @@
   <article class="job">
     <div class="job-head">
       <a class="title" href="{{ j.url }}" target="_blank" rel="noopener">{{ j.title }}</a>
-      <span class="badge status-{{ j.status }}">{{ j.status }}</span>
+      <span class="badges">
+        {% if j.score %}<span class="score score-{{ j.score }}" title="Encaje con tu CV">{{ j.score }}/5</span>{% endif %}
+        <span class="badge status-{{ j.status }}">{{ j.status }}</span>
+      </span>
     </div>
     <p class="meta">
       <strong>{{ j.company or "Empresa no indicada" }}</strong>
@@ -50,6 +61,14 @@
       {% if j.min_salary or j.max_salary %}· {{ j.min_salary or "?" }}–{{ j.max_salary or "?" }} {{ j.salary_currency }}/mes{% endif %}
       {% if j.published_at %}· {{ j.published_at.strftime("%Y-%m-%d") }}{% endif %}
     </p>
+    {% if j.score_data %}
+    <div class="ai">
+      <p><strong>{{ j.score_data.recommendation|capitalize }}.</strong> {{ j.score_data.summary }}</p>
+      {% if j.score_data.matched %}<p class="ok">✔ {{ j.score_data.matched|join(" · ") }}</p>{% endif %}
+      {% if j.score_data.missing %}<p class="miss">✘ {{ j.score_data.missing|join(" · ") }}</p>{% endif %}
+      {% if j.score_data.red_flags %}<p class="flag">⚠ {{ j.score_data.red_flags|join(" · ") }}</p>{% endif %}
+    </div>
+    {% endif %}
     <details>
       <summary>Ver descripción</summary>
       <pre>{{ j.description }}</pre>

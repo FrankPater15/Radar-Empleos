@@ -38,6 +38,12 @@ class Job(Base):
     # Relevancia para Colombia: oferta en Colombia o 100 % remota
     open_to_colombia: Mapped[bool] = mapped_column(Boolean, default=False, index=True)
 
+    # Puntuación con IA (fase 2). score_cv_hash detecta si cambiaste el CV desde la última nota
+    score: Mapped[int | None] = mapped_column(Integer, index=True)
+    score_data: Mapped[dict | None] = mapped_column(JSON)
+    score_cv_hash: Mapped[str | None] = mapped_column(String(32))
+    scored_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+
     # Campos del usuario: la ingesta nunca los sobrescribe
     status: Mapped[str] = mapped_column(String(20), default="encontrada", index=True)
     first_seen_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utcnow)

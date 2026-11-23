@@ -41,6 +41,8 @@ def query_jobs(
     status: str = "",
     colombia: bool = True,
     limit: int = 200,
+    min_score: int = 0,
+    order: str = "recientes",
 ) -> list[Job]:
     stmt = select(Job)
     if q:
@@ -59,7 +61,13 @@ def query_jobs(
         stmt = stmt.where(Job.status != "descartada")
     if colombia:
         stmt = stmt.where(Job.open_to_colombia.is_(True))
-    stmt = stmt.order_by(Job.published_at.desc().nulls_last()).limit(limit)
+    if min_score:
+        stmt = stmt.where(Job.score >= min_score)
+    if order == "nota":
+        stmt = stmt.order_by(Job.score.desc().nulls_last(), Job.published_at.desc().nulls_last())
+    else:
+        stmt = stmt.order_by(Job.published_at.desc().nulls_last())
+    stmt = stmt.limit(limit)
     return list(session.scalars(stmt))
 
 
@@ -75,16 +83,20 @@ def index(
     category: str = "",
     status: str = "",
     colombia: str = "1",
+    min_score: str = "",
+    order: str = "recientes",
     session: Session = Depends(get_session),
 ):
-    jobs = query_jobs(session, q, seniority, category, status, colombia == "1")
+    ms = int(min_score) if min_score.isdigit() else 0
+    jobs = query_jobs(session, q, seniority, category, status, colombia == "1", min_score=ms, order=order)
     return templates.TemplateResponse(
         request,
         "index.html",
         {
             "jobs": jobs,
             "filters": {"q": q, "seniority": seniority, "category": category,
-                        "status": status, "colombia": colombia},
+                        "status": status, "colombia": colombia,
+                        "min_score": min_score, "order": order},
             "seniorities": distinct_values(session, Job.seniority),
             "categories": distinct_values(session, Job.category),
             "statuses": STATUSES,
@@ -96,9 +108,10 @@ def index(
 @app.get("/api/jobs")
 def api_jobs(
     q: str = "", seniority: str = "", category: str = "", status: str = "",
-    colombia: bool = True, limit: int = 200, session: Session = Depends(get_session),
+    colombia: bool = True, limit: int = 200, min_score: int = 0, order: str = "recientes",
+    session: Session = Depends(get_session),
 ):
-    jobs = query_jobs(session, q, seniority, category, status, colombia, min(limit, 1000))
+    jobs = query_jobs(session, q, seniority, category, status, colombia, min(limit, 1000), min_score, order)
     return [
         {
             "id": j.id, "title": j.title, "company": j.company, "url": j.url,
@@ -108,6 +121,8 @@ def api_jobs(
             "salary_currency": j.salary_currency,
             "published_at": j.published_at.isoformat() if j.published_at else None,
             "status": j.status,
+            "score": j.score,
+            "score_data": j.score_data,
         }
         for j in jobs
     ]

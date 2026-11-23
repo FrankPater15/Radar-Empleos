@@ -31,3 +31,11 @@ details pre { white-space: pre-wrap; font: inherit; font-size: .9rem; margin: 8p
 .status-entrevista, .status-oferta { color: var(--warn); border-color: var(--warn); }
 .status-rechazo, .status-descartada { color: var(--bad); border-color: var(--bad); }
 .empty { text-align: center; color: var(--muted); padding: 40px 0; }
+.badges { display: flex; gap: 6px; align-items: center; }
+.score { font-weight: 700; font-size: .8rem; padding: 2px 8px; border-radius: 999px; color: #fff; background: var(--muted); }
+.score-5, .score-4 { background: var(--ok); }
+.score-3 { background: var(--warn); }
+.score-1, .score-2 { background: var(--bad); }
+.ai { border-left: 3px solid var(--accent); padding: 2px 10px; margin: 6px 0; font-size: .9rem; }
+.ai p { margin: 4px 0; }
+.ai .ok { color: var(--ok); } .ai .miss { color: var(--muted); } .ai .flag { color: var(--bad); }
