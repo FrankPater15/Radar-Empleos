@@ -4,7 +4,9 @@ Workable, BambooHR) de una lista curada de empresas (ats_companies.json), más R
 Son los endpoints que cada proveedor publica para que las empresas muestren sus vacantes.
 Cada oferta enlaza a su URL original en el sitio de la empresa. Solo se conservan las
 ofertas abiertas a Colombia (país CO, ciudad colombiana, LATAM o remoto desde cualquier lugar).
-Cada empresa falla por separado; entre empresas hay una pausa de cortesía.
+Cada empresa falla por separado. Los proveedores se consultan a la vez (son servidores
+distintos), pero dentro de cada uno las empresas van de a una, con una pausa de cortesía
+entre ellas: cada servidor recibe el mismo ritmo de peticiones que si todo fuera en serie.
 """
 from __future__ import annotations
 
@@ -12,6 +14,8 @@ import html
 import json
 import re
 import time
+from collections import defaultdict
+from concurrent.futures import ThreadPoolExecutor
 from datetime import datetime, timezone
 from typing import Callable, Iterator
 
@@ -346,21 +350,36 @@ def fetch_company(client, company: dict) -> list[dict]:
     return [j for j in FETCHERS[company["ats"]](client, company) if j["open_to_colombia"] and j["url"]]
 
 
+def _fetch_provider(client, group: list[tuple[int, dict]], log, sleep, delay_s: float) -> dict[int, list[dict]]:
+    """Empresas de un mismo proveedor, en serie y con pausa: {posición en la lista: ofertas}."""
+    out: dict[int, list[dict]] = {}
+    for n, (i, c) in enumerate(group):
+        if n:
+            sleep(delay_s)
+        try:
+            out[i] = fetch_company(client, c)
+        except Exception as e:  # una empresa caída no tumba la corrida
+            log(f"  ! ats {c.get('ats')}/{c.get('token')}: {type(e).__name__}: {e}")
+    return out
+
+
 def fetch_all(companies: list[dict] | None = None, client: httpx.Client | None = None, log=print,
               sleep=time.sleep, delay_s: float = DELAY_S) -> Iterator[dict]:
     own = client is None
     client = client or make_client()
     try:
         companies = load_companies() if companies is None else companies
+        by_ats: dict[str, list[tuple[int, dict]]] = defaultdict(list)
         for i, c in enumerate(companies):
-            if i:
-                sleep(delay_s)
-            try:
-                jobs = fetch_company(client, c)
-            except Exception as e:  # una empresa caída no tumba la corrida
-                log(f"  ! ats {c.get('ats')}/{c.get('token')}: {type(e).__name__}: {e}")
-                continue
-            yield from jobs
+            by_ats[c.get("ats")].append((i, c))
+        with ThreadPoolExecutor(max_workers=max(1, len(by_ats)), thread_name_prefix="ats") as pool:
+            futures = [pool.submit(_fetch_provider, client, group, log, sleep, delay_s)
+                       for group in by_ats.values()]
+        results: dict[int, list[dict]] = {}
+        for f in futures:
+            results.update(f.result())
+        for i in sorted(results):  # mismo orden que la lista de empresas
+            yield from results[i]
     finally:
         if own:
             client.close()

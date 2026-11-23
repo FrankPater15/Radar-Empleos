@@ -127,6 +127,35 @@ def test_fetch_all_isolates_failures_and_filters(monkeypatch):
     assert pauses == [ats.DELAY_S]  # pausa entre empresas
 
 
+def test_fetch_all_providers_in_parallel_same_provider_in_series():
+    import threading
+
+    lever_called = threading.Event()
+
+    def handler(req: httpx.Request):
+        if "lever" in req.url.host:
+            lever_called.set()
+            return httpx.Response(200, json=[{"id": "L1", "text": "QA", "hostedUrl": "https://x/L1",
+                                              "categories": {"location": "Bogotá, Colombia"}}])
+        # Greenhouse espera a que Lever haya arrancado: en serie, esto no pasaría nunca
+        if not lever_called.wait(5):
+            return httpx.Response(500)
+        token = req.url.path.split("/")[3]
+        return httpx.Response(200, json={"jobs": [{"id": 1, "title": "Dev", "absolute_url": f"https://x/{token}",
+                                                   "location": {"name": "Colombia"}}]})
+
+    companies = [{"name": "G1", "ats": "greenhouse", "token": "g1"},
+                 {"name": "G2", "ats": "greenhouse", "token": "g2"},
+                 {"name": "L", "ats": "lever", "token": "l"}]
+    logs, pauses = [], []
+    with _client(handler) as c:
+        jobs = list(ats.fetch_all(companies, c, log=logs.append, sleep=pauses.append))
+    assert logs == []
+    # mismo orden que la lista, aunque Lever termine primero
+    assert [j["id"] for j in jobs] == ["ats:greenhouse:g1:1", "ats:greenhouse:g2:1", "ats:lever:l:L1"]
+    assert pauses == [ats.DELAY_S]  # solo entre las dos de Greenhouse, no entre proveedores
+
+
 def test_fetch_lever_rejects_non_list():
     with _client(lambda r: httpx.Response(200, json={"error": "x"})) as c:
         with pytest.raises(ValueError):
