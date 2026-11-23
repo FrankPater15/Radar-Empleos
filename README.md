@@ -19,6 +19,10 @@ Agente personal de búsqueda de empleo para Colombia. Junta ofertas de fuentes *
 - [x] Tests (pytest)
 - [x] **Fase 2:** puntuación con IA (Gemini gratis o Claude) contra tu CV maestro: nota de 1 a 5, recomendación, requisitos cumplidos y faltantes, y señales de alerta (JSON estructurado validado con Pydantic)
 - [x] Solo puntúa lo pendiente: las ofertas ya puntuadas no se repiten, y si cambias el CV se vuelven a puntuar
+- [x] **Corrida diaria desatendida:** tarea programada de Windows, logs con rotación en `logs/radar.log`, cada fuente falla por separado y, sin red, espera un poco y termina sin error
+- [x] **Aviso de escritorio** al terminar ("N ofertas nuevas, M prometedoras"); el clic abre las nuevas en el panel
+- [x] **Seguimiento:** notas por oferta, fecha de envío, recordatorio de seguimiento a los 7 días, filtros "Nuevas" y "Seguimiento pendiente" y exportación a CSV
+- [x] **Atajos de teclado** en el panel (j/k, a/d/e, u, o, ?) sin recargar la página
 - [x] **Panel rediseñado:** anillo de afinidad, veredicto de la IA, razones del prefiltro, embudo con contadores, filtros por fuente y afinidad, botón *Deshacer*, tema claro/oscuro según el sistema y diseño adaptable a celular
 
 ## Hoja de ruta
@@ -80,6 +84,56 @@ python -m radar.run --limit 60 --min-fit 60 # más puntuaciones, solo las muy af
 
 Las búsquedas (`SEARCH_QUERIES`), tus habilidades (`SKILLS`) y la afinidad mínima (`MIN_FIT`) se cambian en `.env`.
 
+Opciones de `radar.run` para la corrida diaria:
+
+```powershell
+python -m radar.run --no-notify          # sin aviso de escritorio al terminar
+python -m radar.run --wait-network 0     # no esperar a que haya red
+python -m radar.run --log-file otro.log  # por defecto: logs\radar.log (rota a 1 MB, guarda 7)
+```
+
+### Corrida diaria automática (Programador de tareas)
+
+```powershell
+powershell -ExecutionPolicy Bypass -File scripts\instalar_tarea.ps1     # todos los días a las 7:30
+powershell -ExecutionPolicy Bypass -File scripts\instalar_tarea.ps1 -Hora 08:00 -Argumentos "--limit 60"
+Start-ScheduledTask -TaskName RadarEmpleoCO                              # probarla ya
+Get-ScheduledTaskInfo -TaskName RadarEmpleoCO | Select-Object LastRunTime, LastTaskResult
+Get-Content logs\radar.log -Tail 30
+powershell -ExecutionPolicy Bypass -File scripts\desinstalar_tarea.ps1  # quitarla
+```
+
+- Se registra con tu usuario (sin administrador) y corre `.venv\Scripts\pythonw.exe -m radar.run` (sin ventana de consola) con el proyecto como directorio de trabajo.
+- Si el PC estaba apagado a las 7:30, corre al encenderlo (`StartWhenAvailable`), y solo si hay red (`RunOnlyIfNetworkAvailable`). Si aun así no hay conexión, reintenta unos minutos y termina con código 0.
+- Solo trae y puntúa ofertas. **Nunca postula ni contacta a nadie.**
+- Al terminar muestra un aviso de Windows (paquete `win11toast`). El clic abre http://127.0.0.1:8000/?nuevas=1, así que el panel (`uvicorn`) debe estar corriendo.
+
+**La base de datos está en OneDrive.** `radar.db` vive en la carpeta del proyecto, que OneDrive sincroniza. La base usa el modo WAL (archivos `radar.db-wal` y `radar.db-shm`) y espera hasta 15 s si está ocupada, pero si OneDrive la bloquea o sube una copia a mitad de una escritura puede haber errores o conflictos. Conviene una de estas dos opciones:
+- Mover la base fuera de OneDrive: en `.env`, `DATABASE_URL=sqlite:///C:/Users/<usuario>/radar-data/radar.db`.
+- O sacar el proyecto (o al menos la base) de la carpeta sincronizada: OneDrive personal no permite excluir archivos sueltos, así que lo práctico es la opción anterior o mover el proyecto fuera de `Desktop`/`Documentos` si están respaldados por OneDrive. Antes de mover la base, cierra el panel y la tarea, y copia juntos `radar.db`, `radar.db-wal` y `radar.db-shm`.
+
+Las rutas relativas (`DATABASE_URL=sqlite:///radar.db`, `CV_PATH`, `LOG_FILE`) se resuelven contra la raíz del proyecto, no contra el directorio desde el que se ejecuta el comando.
+
+### Seguimiento y atajos del panel
+
+- **Nuevas:** `/?nuevas=1` muestra las ofertas vistas por primera vez desde el inicio de la última corrida de `radar.run` (si no hay corridas registradas, las de las últimas 24 h). Llevan la insignia *Nueva*.
+- **Enviada:** al marcar una oferta como *enviada* se guarda la fecha y se programa un seguimiento a los 7 días (`FOLLOW_UP_DAYS` en `.env`). `/?seguimiento=1` lista los vencidos, con los botones *Seguimiento hecho* y *Posponer 7 días*. Marcar *enviada* solo lo anota en tu radar: no postula ni contacta a nadie.
+- **Notas:** cada tarjeta tiene un campo de notas que se guarda en la base.
+- **Exportar CSV:** el botón *Exportar CSV* (o `/export.csv?...`) descarga las ofertas con los filtros actuales, separadas por `;` y en UTF-8 con BOM para que Excel en español las abra bien.
+- La ingesta nunca sobrescribe el estado, las notas ni las fechas de seguimiento.
+
+| Tecla | Acción |
+|---|---|
+| `j` / `k` | Oferta siguiente / anterior |
+| `a` | Aprobada |
+| `e` | Enviada |
+| `d` | Descartada |
+| `u` | Deshacer el último cambio |
+| `o` | Abrir la oferta en una pestaña nueva |
+| `?` | Mostrar la ayuda de atajos |
+
+Sin JavaScript, los botones siguen funcionando como formularios normales.
+
 Tests:
 
 ```powershell
@@ -95,12 +149,17 @@ radar/
   models.py            modelo Job y estados del embudo
   sources/             getonbrd.py, himalayas.py, jobicy.py + common.py (reintentos con Retry-After, HTML a texto)
   relevance.py         prefiltro de afinidad 0–100 con razones legibles
-  run.py               ingesta + puntuación en un solo comando
+  run.py               ingesta + puntuación en un solo comando (espera de red, log, aviso, registro de corrida)
+  logsetup.py          logging a consola + logs/radar.log con rotación
+  netcheck.py          comprobación de red con reintentos cortos
+  notify.py            aviso de escritorio (win11toast)
+  tracking.py          corridas, ofertas nuevas, seguimiento y exportación CSV
   ingest.py            upsert idempotente (no toca status ni first_seen_at) + control de duplicados
   scoring.py           rúbrica + GeminiScorer / ClaudeScorer con salida estructurada (JobScore)
   score.py             CLI: puntúa las pendientes y guarda una por una
-  main.py              FastAPI: panel HTML, /api/jobs, cambio de estado
-  templates/, static/  vista
+  main.py              FastAPI: panel HTML, /api/jobs, estado (HTML o JSON), notas, seguimiento, /export.csv
+  templates/, static/  vista (style.css, keys.js con los atajos)
+scripts/               instalar_tarea.ps1 / desinstalar_tarea.ps1 (tarea programada diaria)
 tests/                 tests de parser, upsert y endpoints, con una respuesta real de la API como fixture
 ```
 
