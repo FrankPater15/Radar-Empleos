@@ -28,6 +28,17 @@ def html_to_text(raw: str | None) -> str:
     return "\n".join(ln for ln in lines if ln)
 
 
+_URL_RE = re.compile(r"https?://[^\s/?#]+\S*", re.I)
+
+
+def safe_url(url) -> str | None:
+    """La URL limpia si es http(s); None para javascript:, data:, vacías o no-texto."""
+    if not isinstance(url, str):
+        return None
+    url = url.strip()
+    return url if _URL_RE.fullmatch(url) else None
+
+
 def make_client() -> httpx.Client:
     return httpx.Client(timeout=25, headers={"User-Agent": USER_AGENT}, follow_redirects=True)
 

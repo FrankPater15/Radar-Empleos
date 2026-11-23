@@ -20,6 +20,7 @@ from radar.db import SessionLocal, init_db
 from radar.models import STATUSES, Job
 from radar.relevance import extract_requirements, rank_value
 from radar.sources import ats, getonbrd, himalayas, jobicy
+from radar.sources.common import safe_url
 from radar.tracking import (apply_status, count_follow_ups, count_new, export_csv, follow_up,
                             follow_up_due_clause, new_since)
 
@@ -70,6 +71,7 @@ templates.env.tests["vencido"] = vencido
 templates.env.globals["SOURCE_NAMES"] = SOURCE_NAMES
 templates.env.globals["es_nueva"] = es_nueva
 templates.env.globals["requisitos"] = extract_requirements
+templates.env.globals["safe_url"] = safe_url
 
 
 @asynccontextmanager

@@ -162,7 +162,7 @@
               <span class="src src-{{ j.source }}">{{ SOURCE_NAMES.get(j.source, j.source) }}</span>
               <span>{{ j.company or "Empresa no indicada" }}</span>
             </p>
-            <h2 id="title-{{ loop.index }}"><a href="{{ j.url }}" target="_blank" rel="noopener">{{ j.title }}</a></h2>
+            <h2 id="title-{{ loop.index }}">{% if safe_url(j.url) %}<a href="{{ j.url }}" target="_blank" rel="noopener noreferrer">{{ j.title }}</a>{% else %}{{ j.title }}{% endif %}</h2>
             <ul class="facts">
               {% if j.seniority %}<li>{{ j.seniority }}</li>{% endif %}
               {% if j.remote_modality %}<li>{{ modality.get(j.remote_modality, j.remote_modality) }}</li>{% endif %}
@@ -256,7 +256,7 @@
             {% endfor %}
             <button name="status" value="encontrada" class="undo" title="Volver a 'encontrada'" {% if j.status == "encontrada" %}hidden{% endif %}>↺ Deshacer</button>
           </form>
-          <a class="open" href="{{ j.url }}" target="_blank" rel="noopener">Ver oferta<span class="visually-hidden"> {{ j.title }}</span> ↗</a>
+          {% if safe_url(j.url) %}<a class="open" href="{{ j.url }}" target="_blank" rel="noopener noreferrer">Ver oferta<span class="visually-hidden"> {{ j.title }}</span> ↗</a>{% endif %}
         </footer>
       </article>
       </li>

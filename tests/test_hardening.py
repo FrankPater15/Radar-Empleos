@@ -108,3 +108,45 @@ def test_cabeceras_de_seguridad(client):
         assert h["referrer-policy"] == "no-referrer"
         assert h["x-content-type-options"] == "nosniff"
     assert _post(client, Origin="http://evil.example.com").headers["x-frame-options"] == "DENY"
+
+
+# ---------- 3. URLs de oferta ----------
+def test_safe_url():
+    from radar.sources.common import safe_url
+
+    assert safe_url("https://a.com/x?y=1") == "https://a.com/x?y=1"
+    assert safe_url("  HTTP://a.com ") == "HTTP://a.com"
+    for bad in ("javascript:alert(1)", "JaVaScRiPt:alert(1)", "data:text/html,<script>", "//evil.com",
+                "ftp://a.com", "", None, 5, "https://", "java\nscript:alert(1)", "https://a.com/ x"):
+        assert safe_url(bad) is None, bad
+
+
+def test_ingesta_descarta_urls_no_http(Session):
+    with Session() as s:
+        n = upsert_jobs(s, [job(id="a:ok", title="Analista QA", url=" https://a.com/1 "),
+                            job(id="a:js", title="Otra", company="B", url="javascript:alert(1)"),
+                            job(id="a:data", title="Tercera", company="C", url="data:text/html,x")])
+        assert n == (1, 0)
+        assert [j.url for j in s.query(Job).all()] == ["https://a.com/1"]
+
+
+def test_plantilla_no_enlaza_urls_peligrosas(client, Session):
+    with Session() as s:  # una fila vieja que ya tenía una URL mala en la BD
+        s.add(Job(id="a:mala", source="a", external_id="mala", title="Oferta mala", url="javascript:alert(1)",
+                  open_to_colombia=True, countries=[]))
+        s.commit()
+    html = client.get("/").text
+    assert "Oferta mala" in html and "javascript:" not in html
+    assert 'href="https://example.com"' in html and 'rel="noopener noreferrer"' in html
+    assert 'rel="noopener"' not in html
+
+
+def test_keys_js_valida_esquema():
+    js = client_static("keys.js")
+    assert "https?:" in js and "noreferrer" in js
+
+
+def client_static(name):
+    from pathlib import Path
+
+    return (Path(main.HERE) / "static" / name).read_text(encoding="utf-8")

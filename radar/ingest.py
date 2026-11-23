@@ -16,7 +16,7 @@ from radar.db import SessionLocal, init_db
 from radar.models import Job
 from radar.relevance import fit
 from radar.sources import ats, getonbrd, himalayas, jobicy
-from radar.sources.common import make_client
+from radar.sources.common import make_client, safe_url
 
 # Campos que la ingesta puede actualizar. status y first_seen_at pertenecen al usuario.
 SOURCE_FIELDS = [
@@ -68,7 +68,10 @@ def upsert_jobs(session: Session, jobs: Iterable[dict]) -> tuple[int, int]:
         if raw["id"] in seen:  # la misma oferta puede salir en dos categorías o búsquedas
             continue
         seen.add(raw["id"])
-        data = _with_derived(raw)
+        url = safe_url(raw.get("url"))
+        if url is None:  # javascript:, data:… acabarían en un href del panel
+            continue
+        data = _with_derived({**raw, "url": url})
         job = session.get(Job, data["id"])
         if job is None:
             dup = session.scalar(select(Job.id).where(Job.dedupe_key == data["dedupe_key"],

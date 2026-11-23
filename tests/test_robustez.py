@@ -66,7 +66,7 @@ def test_ingest_isolates_failing_source(Session, monkeypatch):
 
 def test_ingest_db_error_rolls_back_only_that_source(Session, monkeypatch):
     def streams(sources, client, log):
-        yield "rota", iter([{"id": "rota:1"}])  # le faltan campos: falla al guardar
+        yield "rota", iter([{"id": "rota:1", "url": "https://x.co/1"}])  # le faltan campos: falla al guardar
         yield "buena", iter([job(id="buena:2", source="buena", title="Soporte TI", company="B")])
 
     monkeypatch.setattr(ingest, "source_streams", streams)
