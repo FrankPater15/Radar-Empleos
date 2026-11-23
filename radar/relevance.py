@@ -48,7 +48,10 @@ NON_TECH = _rx(r"sales|ventas|vendedor|account executive|ejecutiv[oa]|marketing|
                r"ad ops|ads|seo|recruiter|reclutador|talent|hr|rrhh|people|finance|finanzas|contador|"
                r"accountant|legal|lawyer|attorney|paralegal|abogado|nurse|doctor|medico|teacher|profesor|tutor|clinical|copywriter|content|linguist|linguistic|"
                r"translator|traductor|customer service|call center|telemarketing|designer|disenador|"
-               r"product owner|business analyst|analista de negocios|onboarding|success")
+               r"product owner|business analyst|analista de negocios|onboarding|success|"
+               # v3: legal, cumplimiento, nómina, reclutamiento y construcción (pasaban como "poco claro")
+               r"counsel|compliance|cumplimiento|payroll|nomina|benefits|beneficios|compensacion|"
+               r"compensation|talent acquisition|ta|construction|construccion")
 # v2: otros no técnicos que el regex anterior dejaba pasar como "rol técnico" o "poco claro"
 NON_TECH_EXTRA = _rx(r"assistant|asistente|bookkeep\w*|sdr|business development|administrative|"
                      r"virtual assistant|estimator|coordinator|coordinador(?:a)?|recruit\w*|design|diseno|graphic|tax|"

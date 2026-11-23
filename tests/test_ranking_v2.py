@@ -67,7 +67,28 @@ def test_associate_and_entry_level_count_as_junior():
 
 def test_assistant_coordinator_not_tech():
     assert fit(job(title="Junior Recruitment Coordinator"))[0] < 45
-    assert "asistente" in reasons(job(title="Construction Assistant"))
+    assert "asistente" in reasons(job(title="Virtual Assistant"))
+
+
+@pytest.mark.parametrize("title", [
+    "Junior Associate Counsel, Commercial Transactions",
+    "Compliance Intern",
+    "Payroll & Benefits Intern (Practicante de Nómina y Compensación)",
+    "Construction Assistant",
+    "Intern TA Volumen",
+])
+def test_legal_payroll_recruiting_construction_not_tech(title):
+    score, why = fit(job(title=title, seniority="Junior"))
+    assert "rol no técnico" in " ".join(why)
+    assert score < config.MIN_FIT
+
+
+@pytest.mark.parametrize("title", [
+    "QA Engineer", "Desarrollador Frontend", "Associate Linux Support Engineer",
+    "Software Engineer - Python and K8s", "Data Engineer",
+])
+def test_tech_titles_unaffected_by_v3_words(title):
+    assert "no técnico" not in reasons(job(title=title))
 
 
 def test_dev_title_with_sales_word_still_dev():
