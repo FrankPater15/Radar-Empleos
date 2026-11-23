@@ -20,7 +20,7 @@ from radar import config
 from radar.db import SessionLocal, init_db
 from radar.models import STATUSES, Job
 from radar.relevance import extract_requirements, rank_value
-from radar.sources import ats, getonbrd, himalayas, jobicy
+from radar.sources import ats, getonbrd, himalayas, jobicy, linkedin_mail
 from radar.sources.common import safe_url
 from radar.tracking import (apply_status, count_follow_ups, count_new, export_csv, follow_up,
                             follow_up_due_clause, new_since)
@@ -28,7 +28,7 @@ from radar.tracking import (apply_status, count_follow_ups, count_new, export_cs
 HERE = Path(__file__).parent
 templates = Jinja2Templates(directory=HERE / "templates")
 
-SOURCE_NAMES = {m.SOURCE: m.SOURCE_NAME for m in (getonbrd, himalayas, jobicy, ats)}
+SOURCE_NAMES = {m.SOURCE: m.SOURCE_NAME for m in (getonbrd, himalayas, jobicy, ats, linkedin_mail)}
 SOURCE_NAMES[ats.REMOTEOK_SOURCE] = ats.REMOTEOK_NAME
 ORDERS = {"mejor": "Mejor encaje", "afinidad": "Afinidad", "nota": "Nota IA", "recientes": "Más recientes"}
 COLOMBIA_TZ = timezone(timedelta(hours=-5), "COT")  # Colombia no tiene horario de verano

@@ -9,21 +9,30 @@ Puesta en marcha (una vez):
   2. python -m radar.sources.gmail_alerts --auth        abre el navegador para autorizar
   3. python -m radar.sources.gmail_alerts --muestras 10 guarda alertas de ejemplo en
      secrets/gmail_muestras/ para escribir los lectores de cada formato.
+
+Desde ahí la ingesta usa la fuente "gmail": cada correo se pasa al lector de su remitente
+(hoy LinkedIn; los que no tienen lector, como Computrabajo por ahora, se cuentan y se omiten).
 """
 from __future__ import annotations
 
 import argparse
 import base64
+import logging
 import re
 import sys
+from collections import Counter
 from dataclasses import dataclass
 from datetime import datetime, timezone
 from email.utils import parseaddr
 from pathlib import Path
+from typing import Callable, Iterator
 
 from radar import config
+from radar.sources import linkedin_mail
+from radar.sources.common import PARSE_ERRORS
 
 SCOPES = ["https://www.googleapis.com/auth/gmail.readonly"]  # solo lectura
+logger = logging.getLogger("radar.sources")
 
 
 class GmailSetupError(RuntimeError):
@@ -54,8 +63,14 @@ def load_credentials(credentials_file: Path | None = None, token_file: Path | No
     creds = Credentials.from_authorized_user_file(str(token_file), SCOPES) if token_file.exists() else None
     if creds and creds.valid:
         return creds
-    if creds and creds.expired and creds.refresh_token:
-        creds.refresh(Request())
+    if creds and creds.expired and creds.refresh_token and not interactive:
+        from google.auth.exceptions import RefreshError
+
+        try:
+            creds.refresh(Request())
+        except RefreshError as e:  # en modo "Testing", Google revoca la autorización a los 7 días
+            raise GmailSetupError("La autorización de Gmail venció o fue revocada. Corre: "
+                                  "python -m radar.sources.gmail_alerts --auth") from e
     elif interactive:
         if not credentials_file.exists():
             raise GmailSetupError(f"No encuentro {credentials_file}. Descarga el cliente OAuth de "
@@ -125,6 +140,48 @@ def search(service, query: str | None = None, max_results: int = 50) -> list[Mai
             break
     return [parse_message(service.users().messages().get(userId="me", id=i, format="full").execute())
             for i in ids[:max_results]]
+
+
+# --- Fuente de la ingesta ---------------------------------------------------------------------
+
+# Dominio del remitente -> lector de ese formato de correo
+READERS: dict[str, Callable[[str, datetime | None], list[dict]]] = {
+    "linkedin.com": linkedin_mail.parse_alert,
+}
+
+
+def reader_for(sender: str):
+    domain = sender.rsplit("@", 1)[-1]
+    return next((r for d, r in READERS.items() if domain == d or domain.endswith("." + d)), None)
+
+
+def is_authorized(token_file: Path | None = None) -> bool:
+    return (token_file or config.GMAIL_TOKEN_FILE).exists()
+
+
+def fetch_all(service=None, query: str | None = None, max_results: int | None = None,
+              log=print) -> Iterator[dict]:
+    """Ofertas de las alertas del correo. Se recorren de la más vieja a la más nueva, así una
+    oferta que llega en varios correos conserva la fecha del primero."""
+    service = service or make_service()
+    mails = search(service, query, max_results or config.GMAIL_MAX_MESSAGES)
+    stats = Counter()
+    for mail in reversed(mails):
+        read = reader_for(mail.sender)
+        if read is None:
+            stats["sin lector"] += 1
+            continue
+        try:
+            jobs = read(mail.html, mail.date)
+        except PARSE_ERRORS as e:  # un correo raro no tumba los demás
+            logger.warning("gmail: correo %s omitido (%s: %s)", mail.id, type(e).__name__, e)
+            stats["ilegibles"] += 1
+            continue
+        stats["leídos"] += 1
+        stats["ofertas"] += len(jobs)
+        yield from jobs
+    extra = "".join(f", {stats[k]} {k}" for k in ("sin lector", "ilegibles") if stats[k])
+    log(f"  gmail: {len(mails)} correos ({stats['leídos']} leídos{extra}), {stats['ofertas']} ofertas")
 
 
 # --- Muestras para escribir los lectores ------------------------------------------------------

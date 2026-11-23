@@ -54,7 +54,7 @@ def _list(name: str, default: str) -> list[str]:
 
 
 # Fuentes activas (todas son APIs pÃºblicas que permiten este uso)
-SOURCES = _list("SOURCES", "getonbrd,himalayas,jobicy,ats")
+SOURCES = _list("SOURCES", "getonbrd,himalayas,jobicy,ats,gmail")
 
 # BÃºsquedas de texto en Get on Board y Himalayas (Himalayas ya filtra a ofertas abiertas a Colombia)
 SEARCH_QUERIES = _list(
@@ -124,4 +124,7 @@ GMAIL_CREDENTIALS_FILE = project_path(os.getenv("GMAIL_CREDENTIALS_FILE", "secre
 GMAIL_TOKEN_FILE = project_path(os.getenv("GMAIL_TOKEN_FILE", "secrets/gmail_token.json"))
 GMAIL_SAMPLES_DIR = project_path(os.getenv("GMAIL_SAMPLES_DIR", "secrets/gmail_muestras"))
 GMAIL_ACCOUNT = os.getenv("GMAIL_ACCOUNT", "").strip()  # sugiere esta cuenta al autorizar
-GMAIL_QUERY = os.getenv("GMAIL_QUERY", "from:(linkedin.com OR computrabajo) newer_than:30d")
+# Solo los remitentes de ofertas: linkedin.com a secas trae tambien boletines, invitaciones y avisos
+GMAIL_QUERY = os.getenv("GMAIL_QUERY", "from:(jobalerts-noreply@linkedin.com OR jobs-noreply@linkedin.com "
+                                       "OR computrabajo) newer_than:30d")
+GMAIL_MAX_MESSAGES = int(os.getenv("GMAIL_MAX_MESSAGES", "100"))

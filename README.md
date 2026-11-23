@@ -30,7 +30,7 @@ Agente personal de búsqueda de empleo para Colombia. Junta ofertas de fuentes *
 | Fase | Contenido |
 |---|---|
 | 1 ✅ | Get on Board, base de datos y panel con filtros y estados |
-| 1b | Lectura de **tus propios correos de alertas** (Computrabajo, LinkedIn) con la API de Gmail (OAuth, solo lectura) |
+| 1b 🟡 | Lectura de **tus propios correos de alertas** con la API de Gmail (OAuth, solo lectura): LinkedIn listo, Computrabajo pendiente |
 | 2 ✅ | Puntuación con LLM (nota de 1 a 5, requisitos cumplidos y faltantes, en JSON) |
 | 2b | CV adaptado por oferta en PDF. **Regla: nunca inventar experiencia** |
 | 3 | Login JWT, WebSockets ("nueva oferta 4,5/5" en tiempo real), métricas del embudo |
@@ -170,11 +170,21 @@ Antes de añadirla, comprueba que responde y tiene ofertas para Colombia:
 Los proveedores se consultan a la vez; dentro de cada uno, las empresas van de a una con una pausa de 1 s,
 y cada empresa falla por separado.
 
-## Alertas por correo (fase 1b, en construcción)
+## Alertas por correo (fase 1b)
 
 LinkedIn y Computrabajo no permiten scraping, pero sí te mandan alertas de empleo por correo. El radar
 las lee de **tu** Gmail con permiso de **solo lectura** (`gmail.readonly`): no borra, no marca y no envía nada.
-Por ahora solo conecta y guarda muestras; el lector de cada formato de alerta viene después.
+Nunca visita LinkedIn: saca cada oferta del HTML del correo.
+
+- **LinkedIn ✅** (`radar/sources/linkedin_mail.py`): alertas de búsqueda, "empleos similares a…",
+  "solicita ya" y empleos guardados. De cada tarjeta toma título, empresa, ciudad y modalidad, y guarda un
+  enlace limpio `linkedin.com/jobs/view/ID/` (sin los parámetros de rastreo del correo). El correo no trae
+  la descripción, así que el prefiltro y la IA puntúan con el título, la empresa y el lugar.
+- **Computrabajo:** pendiente hasta que lleguen alertas reales para escribir su lector. Mientras tanto
+  esos correos se cuentan como "sin lector" y se omiten.
+
+La fuente `gmail` está en `SOURCES` por defecto. Si todavía no autorizaste, la ingesta solo lo avisa y
+sigue con las demás. `GMAIL_MAX_MESSAGES` (100) limita los correos leídos por corrida.
 
 **1. Crear el cliente OAuth (una vez, ~10 min).** En [Google Cloud Console](https://console.cloud.google.com):
 
@@ -189,14 +199,17 @@ Por ahora solo conecta y guarda muestras; el lector de cada formato de alerta vi
 
 ```powershell
 python -m radar.sources.gmail_alerts --auth          # abre el navegador; elige la cuenta de las alertas
-python -m radar.sources.gmail_alerts --muestras 10   # guarda 10 alertas en secrets/gmail_muestras/
+python -m radar.sources.gmail_alerts --muestras 10   # opcional: guarda 10 alertas en secrets/gmail_muestras/
+python -m radar.ingest --sources gmail               # trae las ofertas de las alertas
 ```
 
 Google mostrará "Google no verificó esta app": es tu propia app, elige *Continuar*. Mientras el proyecto
-esté en modo **Prueba**, Google vence la autorización a los 7 días y hay que repetir `--auth`.
+esté en modo **Prueba**, Google vence la autorización a los 7 días: la ingesta avisa
+"La autorización de Gmail venció" y hay que repetir `--auth`.
 
-En `.env`, `GMAIL_ACCOUNT` sugiere la cuenta al autorizar y `GMAIL_QUERY` es la búsqueda de Gmail
-(por defecto `from:(linkedin.com OR computrabajo) newer_than:30d`).
+En `.env`, `GMAIL_ACCOUNT` sugiere la cuenta al autorizar y `GMAIL_QUERY` es la búsqueda de Gmail (por
+defecto `from:(jobalerts-noreply@linkedin.com OR jobs-noreply@linkedin.com OR computrabajo) newer_than:30d`;
+`from:linkedin.com` a secas trae también boletines, invitaciones y avisos).
 
 ## Arquitectura
 
@@ -205,7 +218,8 @@ radar/
   config.py            variables de entorno
   db.py                engine + sesión SQLAlchemy
   models.py            modelo Job y estados del embudo
-  sources/             getonbrd.py, himalayas.py, jobicy.py + common.py (reintentos con Retry-After, HTML a texto)
+  sources/             getonbrd.py, himalayas.py, jobicy.py, ats.py + common.py (reintentos con Retry-After, HTML a texto)
+                       gmail_alerts.py (Gmail solo lectura) + linkedin_mail.py (lector de alertas de LinkedIn)
   relevance.py         prefiltro de afinidad 0–100 con razones legibles
   run.py               ingesta + puntuación en un solo comando (espera de red, log, aviso, registro de corrida)
   logsetup.py          logging a consola + logs/radar.log con rotación

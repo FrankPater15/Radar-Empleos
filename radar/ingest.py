@@ -16,7 +16,7 @@ from radar import config
 from radar.db import SessionLocal, init_db
 from radar.models import Job
 from radar.relevance import fit
-from radar.sources import ats, getonbrd, himalayas, jobicy
+from radar.sources import ats, getonbrd, gmail_alerts, himalayas, jobicy
 from radar.sources.common import make_client, safe_url
 
 # Campos que la ingesta puede actualizar. status y first_seen_at pertenecen al usuario.
@@ -124,6 +124,12 @@ def source_streams(sources: list[str], client, log=print) -> Iterator[tuple[str,
                 yield name, ats.fetch_all(client=client, log=log)
         elif name == "remoteok":
             yield name, ats.fetch_remoteok(client, log)
+        elif name == "gmail":
+            # Opcional: sin autorizar no es un error, solo se avisa (ver README, "Alertas por correo")
+            if gmail_alerts.is_authorized():
+                yield name, gmail_alerts.fetch_all(log=log)
+            else:
+                log("[gmail] sin autorizar, se omite: python -m radar.sources.gmail_alerts --auth")
         else:
             log(f"  ! fuente desconocida: {name}")
 
