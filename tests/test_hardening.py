@@ -239,3 +239,44 @@ def test_ats_item_corrupto(monkeypatch):
     ids = [j["external_id"] for j in ats.fetch_greenhouse(None, co)]
     assert ids == ["greenhouse:acme:1"]
     assert [j["external_id"] for j in ats.fetch_company(None, co)] == ["greenhouse:acme:1"]
+
+
+# ---------- 6. Migración: índices que faltan ----------
+def test_init_db_crea_indices_faltantes(tmp_path):
+    from sqlalchemy import inspect, text
+
+    engine = make_engine(f"sqlite:///{(tmp_path / 'vieja.db').as_posix()}")
+    init_db(engine)
+    esperados = {"ix_jobs_fit", "ix_jobs_score", "ix_jobs_dedupe_key", "ix_jobs_follow_up_at"}
+    nombres = {i["name"] for i in inspect(engine).get_indexes("jobs")}
+    assert esperados <= nombres
+    with engine.begin() as c:  # simula una BD antigua sin esos índices
+        for name in esperados:
+            c.execute(text(f"DROP INDEX {name}"))
+    assert not esperados & {i["name"] for i in inspect(engine).get_indexes("jobs")}
+    init_db(engine)
+    init_db(engine)  # idempotente
+    assert esperados <= {i["name"] for i in inspect(engine).get_indexes("jobs")}
+    engine.dispose()
+
+
+def test_init_db_columna_duplicada_no_tumba_el_arranque(tmp_path, monkeypatch):
+    from sqlalchemy import inspect, text
+
+    engine = make_engine(f"sqlite:///{(tmp_path / 'carrera.db').as_posix()}")
+    init_db(engine)
+    with engine.begin() as c:
+        c.execute(text("DROP INDEX ix_jobs_follow_up_at"))
+        c.execute(text("ALTER TABLE jobs DROP COLUMN follow_up_at"))
+    real = inspect
+
+    class Stale:  # el inspector aún no ve la columna que otro proceso acaba de añadir
+        def __init__(self, bind):
+            self.insp = real(bind)
+
+        def get_columns(self, table):
+            return [c for c in self.insp.get_columns(table) if c["name"] != "applied_at"]
+
+    monkeypatch.setattr("radar.db.inspect", Stale)
+    init_db(engine)  # ALTER ADD COLUMN applied_at -> "duplicate column name": se ignora
+    engine.dispose()
