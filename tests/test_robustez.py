@@ -76,6 +76,32 @@ def test_ingest_db_error_rolls_back_only_that_source(Session, monkeypatch):
     assert results == {"rota": (0, 0), "buena": (1, 0)} and "rota" in errors
 
 
+def test_ingest_downloads_sources_in_parallel_but_writes_in_order(Session, monkeypatch):
+    import threading
+
+    b_started = threading.Event()
+
+    def lenta():
+        # si las fuentes fueran una tras otra, "rapida" no arrancaría hasta que esta termine
+        assert b_started.wait(5), "las fuentes se descargan una tras otra"
+        yield job(id="lenta:1", source="lenta", title="QA Junior", company="Acme")
+
+    def rapida():
+        b_started.set()
+        yield job(id="rapida:1", source="rapida", title="QA Junior", company="Acme S.A.S.")
+
+    monkeypatch.setattr(ingest, "source_streams",
+                        lambda sources, client, log: iter([("lenta", lenta()), ("rapida", rapida())]))
+    errors = {}
+    results = ingest.run(["lenta", "rapida"], log=lambda m: None, session_factory=Session,
+                         client_factory=nullcontext, errors=errors)
+    assert errors == {}
+    # aunque "rapida" termina primero, se escribe en el orden pedido: la duplicada es la segunda
+    assert results == {"lenta": (1, 0), "rapida": (0, 0)}
+    with Session() as s:
+        assert s.get(Job, "lenta:1") and not s.get(Job, "rapida:1")
+
+
 def test_wait_for_network_gives_up_without_sleeping_for_real():
     sleeps = []
     assert wait_for_network(60, 15, sleep=sleeps.append, check=lambda: False) is False

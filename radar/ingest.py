@@ -5,6 +5,7 @@ import argparse
 import re
 import sys
 import unicodedata
+from concurrent.futures import ThreadPoolExecutor
 from datetime import datetime
 from typing import Iterable, Iterator
 
@@ -135,9 +136,17 @@ def _guarded(stream: Iterable[dict], errors: list[BaseException]) -> Iterator[di
         errors.append(e)
 
 
+def _download(stream: Iterable[dict], errors: list[BaseException]) -> list[dict]:
+    return list(_guarded(stream, errors))
+
+
 def run(sources: list[str], log=print, session_factory=None, client_factory=make_client,
         errors: dict[str, str] | None = None) -> dict[str, tuple[int, int]]:
     """Ingesta de todas las fuentes. Cada fuente falla por separado: se registra y se sigue.
+
+    Las fuentes se descargan a la vez (cada una es un servidor distinto, así que ninguno recibe
+    más carga) y luego se escriben de a una y en el orden de `sources`: la deduplicación entre
+    fuentes da el mismo resultado que antes y la base no se bloquea durante la red.
 
     Si se pasa `errors`, se llena con {fuente: mensaje} de las que fallaron.
     """
@@ -148,11 +157,16 @@ def run(sources: list[str], log=print, session_factory=None, client_factory=make
     results = {}
     with session_factory() as session, client_factory() as client:
         refresh_fit(session)  # ofertas viejas sin prefiltro
-        for name, stream in source_streams(sources, client, log):
-            log(f"[{name}] descargando…")
-            failures: list[BaseException] = []
+        streams = list(source_streams(sources, client, log))
+        with ThreadPoolExecutor(max_workers=max(1, len(streams)), thread_name_prefix="fuente") as pool:
+            pending = []
+            for name, stream in streams:
+                log(f"[{name}] descargando…")
+                failures: list[BaseException] = []
+                pending.append((name, failures, pool.submit(_download, stream, failures)))
+        for name, failures, download in pending:
             try:
-                results[name] = upsert_jobs(session, _guarded(stream, failures))
+                results[name] = upsert_jobs(session, download.result())
             except Exception as e:  # error al guardar: se deshace solo esta fuente
                 session.rollback()
                 failures.append(e)
