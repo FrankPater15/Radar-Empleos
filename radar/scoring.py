@@ -172,6 +172,18 @@ class GeminiScorer:
                     self._sleep(min(60, 10 * 2 ** attempt))
                     continue
                 raise ScoringError(f"Gemini falló con {job.id}: {e.code} {e.status}") from e
+            except (ConnectionError, TimeoutError, OSError) as e:
+                self._network_retry(job, attempt, e)
+            except Exception as e:  # errores de red de httpx (p. ej. "Server disconnected")
+                if type(e).__module__.split(".")[0] not in ("httpx", "httpx2", "httpcore"):
+                    raise
+                self._network_retry(job, attempt, e)
+
+    def _network_retry(self, job: Job, attempt: int, e: Exception) -> None:
+        """Un corte de conexión no debe tumbar toda la corrida: espera y reintenta."""
+        if attempt >= self.max_retries:
+            raise ScoringError(f"Sin conexión con Gemini para {job.id}: {e}") from e
+        self._sleep(min(60, 5 * 2 ** attempt))
 
     def score(self, job: Job) -> JobScore:
         response = self._generate(job)

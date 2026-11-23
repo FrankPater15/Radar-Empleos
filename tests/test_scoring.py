@@ -167,6 +167,16 @@ def test_gemini_bad_output_and_auth_error_raise_scoring_error():
             scorer.score(Job(**sample()))
 
 
+def test_gemini_retries_network_drop():
+    sleeps = []
+    scorer = GeminiScorer("cv", client=gemini_client(ConnectionError("Server disconnected"), js(4).model_dump_json()),
+                          fallback_model="", sleep=sleeps.append)
+    assert scorer.score(Job(**sample())).score == 4 and sleeps == [5]
+    down = [ConnectionError("x")] * 4
+    with pytest.raises(ScoringError):
+        GeminiScorer("cv", client=gemini_client(*down), fallback_model="", sleep=lambda s: None).score(Job(**sample()))
+
+
 def test_make_scorer_rejects_unknown_provider():
     with pytest.raises(ValueError):
         make_scorer("cv", "openai")
