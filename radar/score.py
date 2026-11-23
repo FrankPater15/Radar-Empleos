@@ -16,21 +16,26 @@ from radar.scoring import ScoringError, make_scorer
 
 
 def pending_jobs(session: Session, cv_hash: str, limit: int, only_colombia: bool = True,
-                 rescore: bool = False) -> list[Job]:
-    """Ofertas sin nota, o con nota de un CV anterior. Las descartadas no gastan tokens."""
+                 rescore: bool = False, min_fit: int = 0) -> list[Job]:
+    """Ofertas sin nota, o con nota de un CV anterior, empezando por las de mejor prefiltro.
+
+    Las descartadas y las que no pasan el prefiltro (fit < min_fit) no gastan cuota de IA.
+    """
     stmt = select(Job).where(Job.status != "descartada")
     if only_colombia:
         stmt = stmt.where(Job.open_to_colombia.is_(True))
+    if min_fit:
+        stmt = stmt.where(Job.fit >= min_fit)
     if not rescore:
         stmt = stmt.where(or_(Job.score.is_(None), Job.score_cv_hash != cv_hash))
-    stmt = stmt.order_by(Job.published_at.desc().nulls_last()).limit(limit)
+    stmt = stmt.order_by(Job.fit.desc().nulls_last(), Job.published_at.desc().nulls_last()).limit(limit)
     return list(session.scalars(stmt))
 
 
 def score_pending(session: Session, scorer, limit: int, only_colombia: bool = True,
-                  rescore: bool = False, log=print) -> tuple[int, int]:
+                  rescore: bool = False, log=print, min_fit: int = 0) -> tuple[int, int]:
     ok = failed = 0
-    for job in pending_jobs(session, scorer.cv_hash, limit, only_colombia, rescore):
+    for job in pending_jobs(session, scorer.cv_hash, limit, only_colombia, rescore, min_fit):
         try:
             result = scorer.score(job)
         except ScoringError as e:
@@ -43,7 +48,7 @@ def score_pending(session: Session, scorer, limit: int, only_colombia: bool = Tr
         job.scored_at = utcnow()
         session.commit()  # guarda una por una: si algo falla a mitad, no se pierde lo hecho
         ok += 1
-        log(f"  {result.score}/5  {job.title[:60]}  ({job.company or '?'})")
+        log(f"  {result.score}/5  [afinidad {job.fit}]  {job.title[:60]}  ({job.company or '?'})")
     return ok, failed
 
 
@@ -56,13 +61,19 @@ def main() -> None:
     p.add_argument("--rescore", action="store_true", help="volver a puntuar aunque ya tengan nota")
     p.add_argument("--cv", default=config.CV_PATH)
     p.add_argument("--provider", default=config.SCORING_PROVIDER, help="gemini o anthropic")
+    p.add_argument("--min-fit", type=int, default=config.MIN_FIT,
+                   help="afinidad mínima del prefiltro (0–100) para gastar IA en una oferta")
     args = p.parse_args()
+    score_cli(args.cv, args.provider, args.limit, not args.all_countries, args.rescore, args.min_fit)
 
-    cv_path = Path(args.cv)
+
+def score_cli(cv: str, provider: str, limit: int, only_colombia: bool = True, rescore: bool = False,
+              min_fit: int = config.MIN_FIT) -> None:
+    cv_path = Path(cv)
     if not cv_path.exists():
         sys.exit(f"No encuentro el CV en {cv_path}. Copia cv/cv_maestro.example.md a {cv_path} y complétalo.")
 
-    provider = args.provider.lower()
+    provider = provider.lower()
     if provider == "gemini" and not (os.getenv("GEMINI_API_KEY") or os.getenv("GOOGLE_API_KEY")):
         sys.exit("Falta GEMINI_API_KEY. Créala gratis en https://aistudio.google.com y ponla en .env")
     if provider in ("anthropic", "claude") and not (os.getenv("ANTHROPIC_API_KEY") or os.getenv("ANTHROPIC_AUTH_TOKEN")):
@@ -72,7 +83,7 @@ def main() -> None:
     scorer = make_scorer(cv_path.read_text(encoding="utf-8"), provider)
     print(f"Proveedor: {provider} · modelo: {scorer.model}")
     with SessionLocal() as session:
-        ok, failed = score_pending(session, scorer, args.limit, not args.all_countries, args.rescore)
+        ok, failed = score_pending(session, scorer, limit, only_colombia, rescore, min_fit=min_fit)
     print(f"Puntuadas: {ok}  fallidas: {failed}")
 
 

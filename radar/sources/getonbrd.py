@@ -5,34 +5,20 @@ Salarios en USD mensuales, según publica Get on Board.
 """
 from __future__ import annotations
 
-import html
-import re
 import time
 from datetime import datetime, timezone
 from typing import Iterator
 
 import httpx
 
-from radar.config import USER_AGENT
+from radar.sources.common import get_json, html_to_text, make_client  # noqa: F401  (html_to_text se reexporta)
 
 BASE_URL = "https://www.getonbrd.com/api/v0"
 SOURCE = "getonbrd"
+SOURCE_NAME = "Get on Board"
 
 # GET /api/v0/seniorities
 SENIORITIES = {1: "Sin experiencia", 2: "Junior", 3: "Semi Senior", 4: "Senior", 5: "Expert"}
-
-_TAG_RE = re.compile(r"<[^>]+>")
-_BLOCK_RE = re.compile(r"</?(p|li|ul|ol|br|div|h\d)[^>]*>", re.I)
-_SPACES_RE = re.compile(r"[ \t]+")
-
-
-def html_to_text(raw: str | None) -> str:
-    if not raw:
-        return ""
-    text = _BLOCK_RE.sub("\n", raw)
-    text = html.unescape(_TAG_RE.sub("", text))
-    lines = [_SPACES_RE.sub(" ", ln).strip() for ln in text.splitlines()]
-    return "\n".join(ln for ln in lines if ln)
 
 
 def parse_job(item: dict, category_fallback: str | None = None) -> dict:
@@ -73,29 +59,46 @@ def parse_job(item: dict, category_fallback: str | None = None) -> dict:
     }
 
 
-def fetch_category(
-    category: str,
-    max_pages: int = 5,
-    per_page: int = 50,
-    client: httpx.Client | None = None,
-    delay_s: float = 0.5,
-) -> Iterator[dict]:
-    """Recorre las páginas más recientes de una categoría, con pausa entre peticiones."""
+def _paginate(url: str, params: dict, max_pages: int, client: httpx.Client | None,
+              delay_s: float, category_fallback: str | None) -> Iterator[dict]:
     own_client = client is None
-    client = client or httpx.Client(timeout=20, headers={"User-Agent": USER_AGENT})
+    client = client or make_client()
     try:
         for page in range(1, max_pages + 1):
-            resp = client.get(
-                f"{BASE_URL}/categories/{category}/jobs",
-                params={"per_page": per_page, "page": page, "expand": '["company"]'},
-            )
-            resp.raise_for_status()
-            payload = resp.json()
+            payload = get_json(client, url, {**params, "page": page, "expand": '["company"]'})
             for item in payload.get("data", []):
-                yield parse_job(item, category_fallback=category)
+                yield parse_job(item, category_fallback=category_fallback)
             if page >= (payload.get("meta") or {}).get("total_pages", page):
                 break
             time.sleep(delay_s)
     finally:
         if own_client:
             client.close()
+
+
+def fetch_category(category: str, max_pages: int = 5, per_page: int = 50,
+                   client: httpx.Client | None = None, delay_s: float = 0.5) -> Iterator[dict]:
+    """Recorre las páginas más recientes de una categoría, con pausa entre peticiones."""
+    yield from _paginate(f"{BASE_URL}/categories/{category}/jobs", {"per_page": per_page},
+                         max_pages, client, delay_s, category)
+
+
+def search(query: str, max_pages: int = 2, per_page: int = 100,
+           client: httpx.Client | None = None, delay_s: float = 0.5) -> Iterator[dict]:
+    """Búsqueda de texto libre (encuentra ofertas junior de categorías que no recorremos)."""
+    yield from _paginate(f"{BASE_URL}/search/jobs", {"query": query, "per_page": per_page},
+                         max_pages, client, delay_s, None)
+
+
+def fetch_all(categories: list[str], queries: list[str], max_pages: int, per_page: int,
+              client: httpx.Client | None = None, log=print) -> Iterator[dict]:
+    for cat in categories:
+        try:
+            yield from fetch_category(cat, max_pages, per_page, client)
+        except httpx.HTTPError as e:
+            log(f"  ! getonbrd/{cat}: {e}")
+    for q in queries:
+        try:
+            yield from search(q, client=client)
+        except httpx.HTTPError as e:
+            log(f"  ! getonbrd búsqueda '{q}': {e}")

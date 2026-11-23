@@ -4,9 +4,13 @@ Agente personal de búsqueda de empleo para Colombia. Junta ofertas de fuentes *
 
 > **Human-in-the-loop y respeto de los ToS.** El radar **no** se postula solo ni hace scraping de LinkedIn ni de Computrabajo, porque sus términos lo prohíben. Busca, filtra y organiza. La postulación la haces tú.
 
-## Estado: Fases 1 y 2
+## Estado: Fases 1, 2 y búsqueda ampliada
 
-- [x] Ingesta desde la **API pública oficial de Get on Board** (categorías `programming`, `technical-support`, `sysadmin-devops-qa`)
+- [x] **3 fuentes con API pública:** Get on Board (6 categorías + búsquedas de texto), **Himalayas** (filtrada a ofertas abiertas a Colombia) y **Jobicy** (región LATAM)
+- [x] **Prefiltro local de afinidad (0–100), sin IA:** nivel junior/senior, años de experiencia pedidos, tipo de rol, habilidades de tu CV, inglés exigido y ubicación. Cada punto deja una razón visible en el panel
+- [x] La IA solo gasta cuota en las ofertas que pasan el prefiltro (`MIN_FIT`, por defecto 45), empezando por las mejores
+- [x] **Sin duplicados entre fuentes:** la misma oferta (título + empresa normalizados) se guarda una sola vez
+- [x] Comando todo en uno: `python -m radar.run`
 - [x] Base de datos con SQLAlchemy (SQLite en local; Postgres/Neon cambiando una variable)
 - [x] Ingesta idempotente: re-ejecutarla actualiza las ofertas, pero **nunca pisa el estado que tú marcaste**
 - [x] Panel web (FastAPI + Jinja2): búsqueda, filtros por nivel, categoría, estado y "Colombia o 100 % remoto"
@@ -15,7 +19,7 @@ Agente personal de búsqueda de empleo para Colombia. Junta ofertas de fuentes *
 - [x] Tests (pytest)
 - [x] **Fase 2:** puntuación con IA (Gemini gratis o Claude) contra tu CV maestro: nota de 1 a 5, recomendación, requisitos cumplidos y faltantes, y señales de alerta (JSON estructurado validado con Pydantic)
 - [x] Solo puntúa lo pendiente: las ofertas ya puntuadas no se repiten, y si cambias el CV se vuelven a puntuar
-- [x] Panel: badge de nota, filtro "Nota ≥ N" y orden por mejor nota
+- [x] **Panel rediseñado:** anillo de afinidad, veredicto de la IA, razones del prefiltro, embudo con contadores, filtros por fuente y afinidad, botón *Deshacer*, tema claro/oscuro según el sistema y diseño adaptable a celular
 
 ## Hoja de ruta
 
@@ -40,7 +44,7 @@ python -m venv .venv
 pip install -r requirements.txt
 copy .env.example .env        # opcional
 
-python -m radar.ingest        # trae ofertas (puedes repetirlo cuando quieras)
+python -m radar.run           # trae ofertas de las 3 fuentes y puntúa con IA las 30 más prometedoras
 uvicorn radar.main:app --reload
 ```
 
@@ -68,8 +72,13 @@ python -m radar.score --limit 10     # empieza con pocas para ver el costo
 Opciones de la ingesta:
 
 ```powershell
-python -m radar.ingest --categories programming,technical-support --max-pages 3
+python -m radar.ingest                      # solo descarga, de todas las fuentes
+python -m radar.ingest --sources himalayas  # una sola fuente
+python -m radar.ingest --refit              # recalcula el prefiltro (p. ej. tras cambiar SKILLS)
+python -m radar.run --limit 60 --min-fit 60 # más puntuaciones, solo las muy afines
 ```
+
+Las búsquedas (`SEARCH_QUERIES`), tus habilidades (`SKILLS`) y la afinidad mínima (`MIN_FIT`) se cambian en `.env`.
 
 Tests:
 
@@ -84,8 +93,10 @@ radar/
   config.py            variables de entorno
   db.py                engine + sesión SQLAlchemy
   models.py            modelo Job y estados del embudo
-  sources/getonbrd.py  cliente de la API: paginación, pausa entre peticiones, HTML a texto
-  ingest.py            upsert idempotente (no toca status ni first_seen_at)
+  sources/             getonbrd.py, himalayas.py, jobicy.py + common.py (reintentos con Retry-After, HTML a texto)
+  relevance.py         prefiltro de afinidad 0–100 con razones legibles
+  run.py               ingesta + puntuación en un solo comando
+  ingest.py            upsert idempotente (no toca status ni first_seen_at) + control de duplicados
   scoring.py           rúbrica + GeminiScorer / ClaudeScorer con salida estructurada (JobScore)
   score.py             CLI: puntúa las pendientes y guarda una por una
   main.py              FastAPI: panel HTML, /api/jobs, cambio de estado
@@ -95,5 +106,7 @@ tests/                 tests de parser, upsert y endpoints, con una respuesta re
 
 **Decisiones:**
 - El id de cada oferta es `fuente:id_externo`. Así varias fuentes conviven sin chocar.
-- "Abierta a Colombia" significa que la oferta es en Colombia o es 100 % remota.
-- Los salarios de Get on Board se muestran en USD/mes, tal como los publica la fuente.
+- "Abierta a Colombia": en Get on Board, oferta en Colombia o 100 % remota; en Himalayas y Jobicy, Colombia, LATAM o "cualquier país" entre los lugares permitidos.
+- Los salarios se muestran en USD/mes; los anuales (Jobicy, algunos de Himalayas) se dividen entre 12.
+- Jobicy y Himalayas piden citarlos como fuente y enlazar a la oferta original: el panel muestra la fuente y el botón *Ver oferta* abre la publicación original.
+- El prefiltro es deliberadamente simple y explicable; la nota fina la pone la IA.

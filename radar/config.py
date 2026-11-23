@@ -21,6 +21,33 @@ GETONBRD_CATEGORIES = [
 GETONBRD_MAX_PAGES = int(os.getenv("GETONBRD_MAX_PAGES", "5"))
 GETONBRD_PER_PAGE = int(os.getenv("GETONBRD_PER_PAGE", "50"))
 
+
+def _list(name: str, default: str) -> list[str]:
+    return [x.strip() for x in os.getenv(name, default).split(",") if x.strip()]
+
+
+# Fuentes activas (todas son APIs públicas que permiten este uso)
+SOURCES = _list("SOURCES", "getonbrd,himalayas,jobicy")
+
+# Búsquedas de texto en Get on Board y Himalayas (Himalayas ya filtra a ofertas abiertas a Colombia)
+SEARCH_QUERIES = _list(
+    "SEARCH_QUERIES",
+    "junior developer,desarrollador junior,trainee,practicante,entry level,qa automation,"
+    "rpa,automatizacion,soporte de aplicaciones,implementacion de software,full stack,"
+    "python,react,node,angular,flutter,.net",
+)
+HIMALAYAS_MAX_PAGES = int(os.getenv("HIMALAYAS_MAX_PAGES", "3"))  # 20 ofertas por página
+JOBICY_INDUSTRIES = _list("JOBICY_INDUSTRIES", "engineering,qa-testing,technical-support,data-science")
+
+# Prefiltro local: habilidades de tu CV que suman puntos, y nota mínima para gastar IA
+SKILLS = _list(
+    "SKILLS",
+    "python,javascript,typescript,node,react,angular,flutter,dart,c#,.net,sql,"
+    "mongodb,supabase,rpa,ocr,rest,git,ci/cd,pruebas automatizadas,testing,qa,"
+    "microsoft graph,express,tailwind,vite,azure",
+)
+MIN_FIT = int(os.getenv("MIN_FIT", "45"))
+
 # Puntuación con IA (fase 2). Credenciales en .env: GEMINI_API_KEY o ANTHROPIC_API_KEY
 CV_PATH = os.getenv("CV_PATH", "cv/cv_maestro.md")
 SCORING_PROVIDER = os.getenv("SCORING_PROVIDER", "gemini")  # gemini | anthropic

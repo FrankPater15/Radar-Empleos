@@ -3,86 +3,224 @@
 <head>
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta name="color-scheme" content="light dark">
   <title>Radar de Empleo CO</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Bricolage+Grotesque:opsz,wght@12..96,500..800&family=Instrument+Sans:wght@400..700&family=JetBrains+Mono:wght@500;700&display=swap">
   <link rel="stylesheet" href="{{ url_for('static', path='style.css') }}">
 </head>
 <body>
-<header>
-  <h1>Radar de Empleo CO</h1>
-  <p class="muted">{{ jobs|length }} mostradas · {{ total }} en la base · fuente: Get on Board (API pública)</p>
+{% set back = request.url.path ~ ('?' ~ request.url.query if request.url.query else '') %}
+{% set modality = {"fully_remote": "100 % remoto", "hybrid": "Híbrido", "remote_local": "Remoto local", "no_remote": "Presencial"} %}
+
+<header class="masthead">
+  <a class="brand" href="/">
+    <span class="sweep" aria-hidden="true"></span>
+    <span>
+      <span class="brand-name">Radar de Empleo <b>CO</b></span>
+      <span class="brand-tag">Ofertas reales, filtradas contra tu CV</span>
+    </span>
+  </a>
+  <dl class="kpis">
+    <div><dt>Abiertas a Colombia</dt><dd>{{ stats.colombia }}</dd></div>
+    <div><dt><a href="/?min_fit=60&amp;order=afinidad">Prometedoras</a></dt><dd class="kpi-accent">{{ stats.promising }}</dd></div>
+    <div><dt><a href="/?min_score=4">Nota IA ≥ 4</a></dt><dd>{{ stats.top }}</dd></div>
+    <div><dt>Puntuadas con IA</dt><dd>{{ stats.scored }}</dd></div>
+  </dl>
 </header>
 
-<form class="filters" method="get" action="/">
-  <input type="search" name="q" value="{{ filters.q }}" placeholder="Buscar: soporte, QA, Java, React…">
-  <select name="seniority">
-    <option value="">Cualquier nivel</option>
-    {% for s in seniorities %}<option value="{{ s }}" {% if s == filters.seniority %}selected{% endif %}>{{ s }}</option>{% endfor %}
-  </select>
-  <select name="category">
-    <option value="">Todas las categorías</option>
-    {% for c in categories %}<option value="{{ c }}" {% if c == filters.category %}selected{% endif %}>{{ c }}</option>{% endfor %}
-  </select>
-  <select name="status">
-    <option value="">Activas (sin descartadas)</option>
-    {% for s in statuses %}<option value="{{ s }}" {% if s == filters.status %}selected{% endif %}>{{ s }}</option>{% endfor %}
-  </select>
-  <select name="colombia">
-    <option value="1" {% if filters.colombia == "1" %}selected{% endif %}>Colombia o 100 % remoto</option>
-    <option value="0" {% if filters.colombia == "0" %}selected{% endif %}>Todos los países</option>
-  </select>
-  <select name="min_score">
-    <option value="">Cualquier nota</option>
-    {% for n in [5, 4, 3] %}<option value="{{ n }}" {% if filters.min_score == n|string %}selected{% endif %}>Nota ≥ {{ n }}</option>{% endfor %}
-  </select>
-  <select name="order">
-    <option value="recientes" {% if filters.order != "nota" %}selected{% endif %}>Más recientes</option>
-    <option value="nota" {% if filters.order == "nota" %}selected{% endif %}>Mejor nota</option>
-  </select>
-  <button type="submit">Filtrar</button>
-</form>
+<nav class="funnel" aria-label="Embudo de postulaciones">
+  <ol>
+    {% for s in statuses %}
+    <li><a href="/?status={{ s }}" class="st-{{ s }}" {% if filters.status == s %}aria-current="page"{% endif %}>
+      <span>{{ s|capitalize }}</span><b>{{ stats.by_status[s] }}</b></a></li>
+    {% endfor %}
+  </ol>
+</nav>
 
-{% set back = request.url.path ~ ('?' ~ request.url.query if request.url.query else '') %}
-<main>
-{% for j in jobs %}
-  <article class="job">
-    <div class="job-head">
-      <a class="title" href="{{ j.url }}" target="_blank" rel="noopener">{{ j.title }}</a>
-      <span class="badges">
-        {% if j.score %}<span class="score score-{{ j.score }}" title="Encaje con tu CV">{{ j.score }}/5</span>{% endif %}
-        <span class="badge status-{{ j.status }}">{{ j.status }}</span>
-      </span>
-    </div>
-    <p class="meta">
-      <strong>{{ j.company or "Empresa no indicada" }}</strong>
-      · {{ j.seniority or "nivel ?" }}
-      · {{ j.category or "" }}
-      · {{ {"fully_remote": "100 % remoto", "hybrid": "híbrido", "remote_local": "remoto local", "no_remote": "presencial"}.get(j.remote_modality, j.remote_modality or "") }}
-      · {{ j.countries|join(", ") }}
-      {% if j.min_salary or j.max_salary %}· {{ j.min_salary or "?" }}–{{ j.max_salary or "?" }} {{ j.salary_currency }}/mes{% endif %}
-      {% if j.published_at %}· {{ j.published_at.strftime("%Y-%m-%d") }}{% endif %}
+<div class="layout">
+  <aside class="sidebar">
+    <details class="filters" id="filters" open>
+      <script>
+        // En pantallas pequeñas los filtros empiezan plegados (salvo que haya filtros activos)
+        if (matchMedia("(max-width: 979px)").matches && {{ "false" if active_filters else "true" }}) {
+          document.getElementById("filters").open = false;
+        }
+      </script>
+      <summary>Filtros{% if active_filters %} <span class="count">{{ active_filters }}</span>{% endif %}</summary>
+      <form method="get" action="/">
+        <label class="field field-wide">
+          <span>Buscar</span>
+          <input type="search" name="q" value="{{ filters.q }}" placeholder="QA, RPA, React, soporte…">
+        </label>
+        <label class="field">
+          <span>Afinidad mínima</span>
+          <select name="min_fit">
+            <option value="">Cualquiera</option>
+            {% for n, txt in [(70, "Alta (≥ 70)"), (60, "Buena (≥ 60)"), (45, "Media (≥ 45)")] %}
+            <option value="{{ n }}" {% if filters.min_fit == n|string %}selected{% endif %}>{{ txt }}</option>
+            {% endfor %}
+          </select>
+        </label>
+        <label class="field">
+          <span>Nota IA</span>
+          <select name="min_score">
+            <option value="">Cualquiera</option>
+            {% for n in [5, 4, 3] %}<option value="{{ n }}" {% if filters.min_score == n|string %}selected{% endif %}>≥ {{ n }} de 5</option>{% endfor %}
+          </select>
+        </label>
+        <label class="field">
+          <span>Nivel</span>
+          <select name="seniority">
+            <option value="">Cualquiera</option>
+            {% for s in seniorities %}<option value="{{ s }}" {% if s == filters.seniority %}selected{% endif %}>{{ s }}</option>{% endfor %}
+          </select>
+        </label>
+        <label class="field">
+          <span>Fuente</span>
+          <select name="source">
+            <option value="">Todas</option>
+            {% for s in sources %}<option value="{{ s }}" {% if s == filters.source %}selected{% endif %}>{{ SOURCE_NAMES.get(s, s) }}</option>{% endfor %}
+          </select>
+        </label>
+        <label class="field">
+          <span>Estado</span>
+          <select name="status">
+            <option value="">Activas</option>
+            {% for s in statuses %}<option value="{{ s }}" {% if s == filters.status %}selected{% endif %}>{{ s|capitalize }}</option>{% endfor %}
+          </select>
+        </label>
+        <label class="field">
+          <span>Ubicación</span>
+          <select name="colombia">
+            <option value="1" {% if filters.colombia == "1" %}selected{% endif %}>Abiertas a Colombia</option>
+            <option value="0" {% if filters.colombia == "0" %}selected{% endif %}>Todos los países</option>
+          </select>
+        </label>
+        <label class="field field-wide">
+          <span>Categoría</span>
+          <select name="category">
+            <option value="">Todas</option>
+            {% for c in categories %}<option value="{{ c }}" {% if c == filters.category %}selected{% endif %}>{{ c }}</option>{% endfor %}
+          </select>
+        </label>
+        <label class="field field-wide">
+          <span>Ordenar por</span>
+          <select name="order">
+            {% for k, txt in orders.items() %}<option value="{{ k }}" {% if filters.order == k %}selected{% endif %}>{{ txt }}</option>{% endfor %}
+          </select>
+        </label>
+        <div class="filter-actions">
+          <button type="submit" class="btn-primary">Aplicar</button>
+          {% if active_filters %}<a href="/" class="btn-ghost">Limpiar</a>{% endif %}
+        </div>
+      </form>
+    </details>
+    <p class="note">Los estados solo se guardan en tu radar: marcar <em>enviada</em> no postula ni contacta a nadie.</p>
+  </aside>
+
+  <main>
+    <p class="results">
+      <b>{{ jobs|length }}{% if has_more %}+{% endif %}</b> ofertas · {{ orders[filters.order]|lower }}
     </p>
-    {% if j.score_data %}
-    <div class="ai">
-      <p><strong>{{ j.score_data.recommendation|capitalize }}.</strong> {{ j.score_data.summary }}</p>
-      {% if j.score_data.matched %}<p class="ok">✔ {{ j.score_data.matched|join(" · ") }}</p>{% endif %}
-      {% if j.score_data.missing %}<p class="miss">✘ {{ j.score_data.missing|join(" · ") }}</p>{% endif %}
-      {% if j.score_data.red_flags %}<p class="flag">⚠ {{ j.score_data.red_flags|join(" · ") }}</p>{% endif %}
+
+    <ol class="jobs">
+    {% for j in jobs %}
+      {% set anchor = "job-" ~ loop.index %}
+      {% set fit = j.fit or 0 %}
+      <li id="{{ anchor }}">
+      <article class="job {{ 'fit-hi' if fit >= 70 else ('fit-mid' if fit >= 45 else 'fit-lo') }}{% if j.status != 'encontrada' %} has-status{% endif %}">
+        <header>
+          <div class="ring">
+            <progress class="progress-ring" value="{{ fit }}" max="100" style="--value: {{ fit }}"
+                      aria-label="Afinidad con tu CV" aria-valuetext="{{ fit }} de 100"></progress>
+            <span class="ring-value" aria-hidden="true">{{ fit }}</span>
+          </div>
+          <div class="heading">
+            <p class="eyebrow">
+              <span class="src src-{{ j.source }}">{{ SOURCE_NAMES.get(j.source, j.source) }}</span>
+              <span>{{ j.company or "Empresa no indicada" }}</span>
+            </p>
+            <h2><a href="{{ j.url }}" target="_blank" rel="noopener">{{ j.title }}</a></h2>
+            <ul class="facts">
+              {% if j.seniority %}<li>{{ j.seniority }}</li>{% endif %}
+              {% if j.remote_modality %}<li>{{ modality.get(j.remote_modality, j.remote_modality) }}</li>{% endif %}
+              {% if j.countries %}<li title="{{ j.countries|join(', ') }}">
+                {%- if j.countries|length > 3 -%}
+                  {{ "Colombia" if "Colombia" in j.countries else j.countries[0] }} +{{ j.countries|length - 1 }} países
+                {%- else %}{{ j.countries|join(", ") }}{% endif -%}
+              </li>{% endif %}
+              {% if j.min_salary or j.max_salary %}<li class="salary">US$ {{ "{:,}".format(j.min_salary or j.max_salary) }}{% if j.max_salary and j.min_salary and j.max_salary != j.min_salary %}–{{ "{:,}".format(j.max_salary) }}{% endif %}/mes</li>{% endif %}
+              {% if j.published_at %}<li><time datetime="{{ j.published_at.strftime('%Y-%m-%d') }}">{{ j.published_at|hace }}</time></li>{% endif %}
+            </ul>
+          </div>
+          {% if j.score %}
+          <div class="verdict v-{{ j.score }}" title="Nota de la IA contra tu CV">
+            <strong>{{ j.score }}<small>/5</small></strong>
+            <span>{{ j.score_data.recommendation if j.score_data else "" }}</span>
+          </div>
+          {% endif %}
+        </header>
+
+        {% if j.fit_reasons %}
+        <ul class="reasons" aria-label="Por qué tiene esta afinidad">
+          {% for r in j.fit_reasons %}{% set pts = r.split(" ", 1) %}
+          <li class="{{ 'plus' if pts[0].startswith('+') else ('minus' if pts[0].startswith('-') else 'zero') }}"><b>{{ pts[0] }}</b> {{ pts[1] }}</li>
+          {% endfor %}
+        </ul>
+        {% endif %}
+
+        {% if j.score_data %}
+        <div class="ai">
+          <p class="ai-summary">{{ j.score_data.summary }}</p>
+          <div class="ai-cols">
+            {% if j.score_data.matched %}<div class="ai-ok"><h3>Cumples</h3><ul>{% for x in j.score_data.matched %}<li>{{ x }}</li>{% endfor %}</ul></div>{% endif %}
+            {% if j.score_data.missing %}<div class="ai-miss"><h3>Te falta</h3><ul>{% for x in j.score_data.missing %}<li>{{ x }}</li>{% endfor %}</ul></div>{% endif %}
+            {% if j.score_data.red_flags %}<div class="ai-flag"><h3>Ojo</h3><ul>{% for x in j.score_data.red_flags %}<li>{{ x }}</li>{% endfor %}</ul></div>{% endif %}
+          </div>
+        </div>
+        {% endif %}
+
+        {% if j.description %}
+        <details class="desc">
+          <summary>Descripción completa</summary>
+          <div class="desc-body">{{ j.description }}</div>
+        </details>
+        {% endif %}
+
+        <footer>
+          <form class="status" method="post" action="/jobs/{{ j.id }}/status" aria-label="Estado de la oferta">
+            <input type="hidden" name="back" value="{{ back }}#{{ anchor }}">
+            {% for s in ["aprobada", "enviada", "entrevista", "oferta", "rechazo", "descartada"] %}
+            <button name="status" value="{{ s }}" class="st-{{ s }}" {% if s == j.status %}aria-pressed="true" disabled{% endif %}>{{ s|capitalize }}</button>
+            {% endfor %}
+            {% if j.status != "encontrada" %}
+            <button name="status" value="encontrada" class="undo" title="Volver a 'encontrada'">↺ Deshacer</button>
+            {% endif %}
+          </form>
+          <a class="open" href="{{ j.url }}" target="_blank" rel="noopener">Ver oferta<span class="visually-hidden"> {{ j.title }}</span> ↗</a>
+        </footer>
+      </article>
+      </li>
+    {% endfor %}
+    </ol>
+
+    {% if not jobs %}
+    <div class="empty">
+      <p><b>No hay ofertas con estos filtros.</b></p>
+      <p>Prueba a limpiar los filtros o trae ofertas nuevas con <code>python -m radar.run</code>.</p>
     </div>
     {% endif %}
-    <details>
-      <summary>Ver descripción</summary>
-      <pre>{{ j.description }}</pre>
-    </details>
-    <form class="status-form" method="post" action="/jobs/{{ j.id }}/status">
-      <input type="hidden" name="back" value="{{ back }}">
-      {% for s in ["aprobada", "enviada", "entrevista", "descartada"] %}
-        <button name="status" value="{{ s }}" {% if s == j.status %}disabled{% endif %}>{{ s }}</button>
-      {% endfor %}
-    </form>
-  </article>
-{% else %}
-  <p class="empty">No hay ofertas con estos filtros. ¿Ya corriste <code>python -m radar.ingest</code>?</p>
-{% endfor %}
-</main>
+
+    {% if has_more %}
+    <p class="more"><a class="btn-ghost" href="/?{{ more_query }}">Mostrar más ofertas</a></p>
+    {% endif %}
+  </main>
+</div>
+
+<footer class="site-foot">
+  Fuentes: Get on Board, Himalayas y Jobicy (APIs públicas) · Cada oferta enlaza a su publicación original
+</footer>
 </body>
 </html>

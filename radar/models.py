@@ -38,6 +38,12 @@ class Job(Base):
     # Relevancia para Colombia: oferta en Colombia o 100 % remota
     open_to_colombia: Mapped[bool] = mapped_column(Boolean, default=False, index=True)
 
+    # Prefiltro local 0–100 (radar/relevance.py) y sus razones; se recalcula en cada ingesta
+    fit: Mapped[int | None] = mapped_column(Integer, index=True)
+    fit_reasons: Mapped[list | None] = mapped_column(JSON)
+    # título+empresa normalizados: detecta la misma oferta publicada en dos fuentes
+    dedupe_key: Mapped[str | None] = mapped_column(String(400), index=True)
+
     # Puntuación con IA (fase 2). score_cv_hash detecta si cambiaste el CV desde la última nota
     score: Mapped[int | None] = mapped_column(Integer, index=True)
     score_data: Mapped[dict | None] = mapped_column(JSON)
