@@ -251,6 +251,7 @@ progress.progress-ring::-moz-progress-bar { display: none; background: none; }
 .src-himalayas { color: var(--blue); }
 .src-getonbrd { color: var(--accent); }
 .src-jobicy { color: var(--amber); }
+.src-ats, .src-remoteok { color: var(--violet, var(--blue)); }
 
 .job h2 { margin: 2px 0 6px; font: 700 1.18rem/1.25 var(--font-display); letter-spacing: -0.01em; text-wrap: balance; }
 .job h2 a { text-decoration: none; }

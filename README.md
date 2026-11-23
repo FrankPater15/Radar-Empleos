@@ -140,6 +140,29 @@ Tests:
 pytest
 ```
 
+## Fuente ATS: empresas con tablero público
+
+`radar/sources/ats.py` lee los tableros públicos de empleo (Greenhouse, Lever, Ashby, SmartRecruiters,
+Workable y BambooHR) de las empresas listadas en `radar/sources/ats_companies.json`. Solo guarda las
+ofertas abiertas a Colombia (país CO, ciudad colombiana, LATAM o remoto desde cualquier lugar) y enlaza
+a la oferta original. Se desactiva con `ATS_ENABLED=0`. RemoteOK está disponible como fuente opcional:
+`python -m radar.ingest --sources remoteok` (cita "Remote OK" y enlaza a su URL).
+
+Para añadir una empresa, agrega una entrada `{"name": "...", "ats": "...", "token": "..."}`:
+
+| ats | token | ejemplo |
+|---|---|---|
+| `greenhouse` | slug de `job-boards.greenhouse.io/{token}` | `canonical` |
+| `lever` | slug de `jobs.lever.co/{token}` | `tryjeeves` |
+| `ashby` | slug de `jobs.ashbyhq.com/{token}` | `addi` |
+| `smartrecruiters` | id de la empresa en `jobs.smartrecruiters.com/{token}` | `boschgroup` |
+| `workable` | subdominio de `apply.workable.com/{token}` | `platzi` |
+| `bamboohr` | subdominio de `{token}.bamboohr.com` | `vozy` |
+
+Antes de añadirla, comprueba que responde y tiene ofertas para Colombia:
+`python -c "from radar.sources import ats; from radar.sources.common import make_client; print(len(ats.fetch_company(make_client(), {'name':'X','ats':'lever','token':'slug'})))"`.
+Hay una pausa de 1 s entre empresas y cada una falla por separado.
+
 ## Arquitectura
 
 ```
