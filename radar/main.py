@@ -9,7 +9,7 @@ from pathlib import Path
 from urllib.parse import urlencode
 
 from fastapi import Depends, FastAPI, Form, HTTPException, Request
-from fastapi.responses import HTMLResponse, RedirectResponse, Response
+from fastapi.responses import HTMLResponse, JSONResponse, RedirectResponse, Response
 from fastapi.staticfiles import StaticFiles
 from fastapi.templating import Jinja2Templates
 from sqlalchemy import func, or_, select
@@ -297,6 +297,17 @@ def safe_back(back: str) -> str:
     return back
 
 
+def wants_json(request: Request) -> bool:
+    """El JS del panel pide JSON (Accept: application/json); sin JS, el formulario redirige."""
+    return "application/json" in request.headers.get("accept", "")
+
+
+def counts(session: Session) -> dict:
+    by_status = dict(session.execute(select(Job.status, func.count()).group_by(Job.status)).all())
+    return {"by_status": {s: by_status.get(s, 0) for s in STATUSES},
+            "follow_ups": count_follow_ups(session)}
+
+
 def get_job(session: Session, job_id: str) -> Job:
     job = session.get(Job, job_id)
     if job is None:
@@ -306,6 +317,7 @@ def get_job(session: Session, job_id: str) -> Job:
 
 @app.post("/jobs/{job_id:path}/status")
 def set_status(
+    request: Request,
     job_id: str,
     status: str = Form(...),
     back: str = Form("/"),
@@ -314,13 +326,18 @@ def set_status(
     if status not in STATUSES:
         raise HTTPException(400, f"Estado inválido: {status}")
     job = get_job(session, job_id)
+    previous = job.status
     apply_status(job, status)
     session.commit()
+    if wants_json(request):
+        return JSONResponse({"job": job_json(job), "previous": previous, "counts": counts(session),
+                             "follow_up": fecha(job.follow_up_at) if job.status == "enviada" else ""})
     return RedirectResponse(safe_back(back), status_code=303)
 
 
 @app.post("/jobs/{job_id:path}/notes")
 def set_notes(
+    request: Request,
     job_id: str,
     notes: str = Form(""),
     back: str = Form("/"),
@@ -332,6 +349,8 @@ def set_notes(
         raise HTTPException(400, f"Las notas no pueden pasar de {NOTES_MAX} caracteres")
     job.notes = notes or None
     session.commit()
+    if wants_json(request):
+        return JSONResponse({"job": job_json(job)})
     return RedirectResponse(safe_back(back), status_code=303)
 
 

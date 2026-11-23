@@ -9,6 +9,7 @@
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
   <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Bricolage+Grotesque:opsz,wght@12..96,500..800&family=Instrument+Sans:wght@400..700&family=JetBrains+Mono:wght@500;700&display=swap">
   <link rel="stylesheet" href="{{ url_for('static', path='style.css') }}">
+  <script src="{{ url_for('static', path='keys.js') }}" defer></script>
 </head>
 <body>
 {% set back = request.url.path ~ ('?' ~ request.url.query if request.url.query else '') %}
@@ -27,7 +28,7 @@
     <div><dt>Abiertas a Colombia</dt><dd>{{ stats.colombia }}</dd></div>
     <div><dt><a href="/?min_fit=60&amp;order=afinidad">Prometedoras</a></dt><dd class="kpi-accent">{{ stats.promising }}</dd></div>
     <div><dt><a href="/?min_score=4">Nota IA ≥ 4</a></dt><dd>{{ stats.top }}</dd></div>
-    <div><dt><a href="/?seguimiento=1">Seguimiento pendiente</a></dt><dd{% if stats.follow_ups %} class="kpi-amber"{% endif %}>{{ stats.follow_ups }}</dd></div>
+    <div><dt><a href="/?seguimiento=1">Seguimiento pendiente</a></dt><dd data-count="follow_ups"{% if stats.follow_ups %} class="kpi-amber"{% endif %}>{{ stats.follow_ups }}</dd></div>
   </dl>
 </header>
 
@@ -35,10 +36,10 @@
   <ol>
     {% for s in statuses %}
     <li><a href="/?status={{ s }}" class="st-{{ s }}" {% if filters.status == s %}aria-current="page"{% endif %}>
-      <span>{{ s|capitalize }}</span><b>{{ stats.by_status[s] }}</b></a></li>
+      <span>{{ s|capitalize }}</span><b data-count="{{ s }}">{{ stats.by_status[s] }}</b></a></li>
     {% endfor %}
     <li><a href="/?seguimiento=1" class="chip-follow" {% if filters.seguimiento %}aria-current="page"{% endif %}>
-      <span>Seguimiento pendiente</span><b>{{ stats.follow_ups }}</b></a></li>
+      <span>Seguimiento pendiente</span><b data-count="follow_ups">{{ stats.follow_ups }}</b></a></li>
   </ol>
 </nav>
 
@@ -135,7 +136,11 @@
         {% if filters.seguimiento %}seguimiento más atrasado primero{% else %}{{ orders[filters.order]|lower }}{% endif %}
         {% if filters.nuevas %}· nuevas desde el {{ new_since|fecha }}{% endif %}
       </p>
-      <a class="btn-ghost btn-small" href="/export.csv{% if export_query %}?{{ export_query }}{% endif %}" download>Exportar CSV</a>
+      <div class="results-actions">
+        <button type="button" class="btn-ghost btn-small" id="show-keys" hidden aria-haspopup="dialog"
+                aria-keyshortcuts="Shift+?">Atajos <kbd>?</kbd></button>
+        <a class="btn-ghost btn-small" href="/export.csv{% if export_query %}?{{ export_query }}{% endif %}" download>Exportar CSV</a>
+      </div>
     </div>
 
     <ol class="jobs">
@@ -143,7 +148,8 @@
       {% set anchor = "job-" ~ loop.index %}
       {% set fit = j.fit or 0 %}
       <li id="{{ anchor }}">
-      <article class="job {{ 'fit-hi' if fit >= 70 else ('fit-mid' if fit >= 45 else 'fit-lo') }}{% if j.status != 'encontrada' %} has-status{% endif %}">
+      <article class="job {{ 'fit-hi' if fit >= 70 else ('fit-mid' if fit >= 45 else 'fit-lo') }}{% if j.status != 'encontrada' %} has-status{% endif %}{% if j.status == 'descartada' %} is-discarded{% endif %}"
+               tabindex="-1" data-status="{{ j.status }}" aria-labelledby="title-{{ loop.index }}">
         <header>
           <div class="ring">
             <progress class="progress-ring" value="{{ fit }}" max="100" style="--value: {{ fit }}"
@@ -156,7 +162,7 @@
               <span class="src src-{{ j.source }}">{{ SOURCE_NAMES.get(j.source, j.source) }}</span>
               <span>{{ j.company or "Empresa no indicada" }}</span>
             </p>
-            <h2><a href="{{ j.url }}" target="_blank" rel="noopener">{{ j.title }}</a></h2>
+            <h2 id="title-{{ loop.index }}"><a href="{{ j.url }}" target="_blank" rel="noopener">{{ j.title }}</a></h2>
             <ul class="facts">
               {% if j.seniority %}<li>{{ j.seniority }}</li>{% endif %}
               {% if j.remote_modality %}<li>{{ modality.get(j.remote_modality, j.remote_modality) }}</li>{% endif %}
@@ -238,9 +244,7 @@
             {% for s in ["aprobada", "enviada", "entrevista", "oferta", "rechazo", "descartada"] %}
             <button name="status" value="{{ s }}" class="st-{{ s }}" {% if s == j.status %}aria-pressed="true" disabled{% endif %}>{{ s|capitalize }}</button>
             {% endfor %}
-            {% if j.status != "encontrada" %}
-            <button name="status" value="encontrada" class="undo" title="Volver a 'encontrada'">↺ Deshacer</button>
-            {% endif %}
+            <button name="status" value="encontrada" class="undo" title="Volver a 'encontrada'" {% if j.status == "encontrada" %}hidden{% endif %}>↺ Deshacer</button>
           </form>
           <a class="open" href="{{ j.url }}" target="_blank" rel="noopener">Ver oferta<span class="visually-hidden"> {{ j.title }}</span> ↗</a>
         </footer>
@@ -261,6 +265,23 @@
     {% endif %}
   </main>
 </div>
+
+<div id="live" class="live" role="status" aria-live="polite"></div>
+
+<dialog id="keys-help" class="keys-help" aria-labelledby="keys-title">
+  <h2 id="keys-title">Atajos de teclado</h2>
+  <dl>
+    <div><dt><kbd>j</kbd> / <kbd>k</kbd></dt><dd>Oferta siguiente / anterior</dd></div>
+    <div><dt><kbd>a</kbd></dt><dd>Marcar como aprobada</dd></div>
+    <div><dt><kbd>e</kbd></dt><dd>Marcar como enviada (tú ya postulaste; el radar no envía nada)</dd></div>
+    <div><dt><kbd>d</kbd></dt><dd>Descartar</dd></div>
+    <div><dt><kbd>u</kbd></dt><dd>Deshacer el último cambio de estado</dd></div>
+    <div><dt><kbd>o</kbd></dt><dd>Abrir la oferta en una pestaña nueva</dd></div>
+    <div><dt><kbd>?</kbd></dt><dd>Mostrar u ocultar esta ayuda</dd></div>
+  </dl>
+  <p>Los atajos no funcionan mientras escribes en un campo (por ejemplo, en las notas).</p>
+  <form method="dialog"><button class="btn-primary" autofocus>Cerrar</button></form>
+</dialog>
 
 <footer class="site-foot">
   Fuentes: Get on Board, Himalayas y Jobicy (APIs públicas) · Cada oferta enlaza a su publicación original

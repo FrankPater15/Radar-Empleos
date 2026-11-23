@@ -159,3 +159,40 @@ def test_export_csv_endpoint_respects_filters(client):
     assert "Oferta nueva QA" in text and "Oferta vieja" not in text
     assert "Oferta vieja" in c.get("/export.csv").content.decode("utf-8-sig")
     assert 'href="/export.csv?colombia=1&amp;nuevas=1"' in c.get("/?nuevas=1").text
+
+
+# ---------- Atajos / cambio de estado por fetch ----------
+def test_status_json_for_fetch(client):
+    c, Session = client
+    r = c.post("/jobs/a:nueva/status", data={"status": "enviada"}, headers={"Accept": "application/json"})
+    assert r.status_code == 200
+    body = r.json()
+    assert body["previous"] == "encontrada" and body["job"]["status"] == "enviada"
+    assert body["job"]["applied_at"] and body["job"]["follow_up_at"] and body["follow_up"]
+    assert body["counts"]["by_status"]["enviada"] == 1 and body["counts"]["follow_ups"] == 0
+    # deshacer con fetch: vuelve al estado anterior y limpia las fechas
+    body = c.post("/jobs/a:nueva/status", data={"status": "encontrada"},
+                  headers={"Accept": "application/json"}).json()
+    assert body["job"]["applied_at"] is None and body["counts"]["by_status"]["enviada"] == 0
+    bad = c.post("/jobs/a:nueva/status", data={"status": "x"}, headers={"Accept": "application/json"})
+    assert bad.status_code == 400 and "inválido" in bad.json()["detail"]
+    # sin Accept JSON sigue redirigiendo (los formularios funcionan sin JS)
+    assert c.post("/jobs/a:nueva/status", data={"status": "aprobada"}, follow_redirects=False).status_code == 303
+
+
+def test_notes_json_for_fetch(client):
+    c, _ = client
+    r = c.post("/jobs/a:nueva/notes", data={"notes": "ok"}, headers={"Accept": "application/json"})
+    assert r.status_code == 200 and r.json()["job"]["notes"] == "ok"
+
+
+def test_panel_has_shortcut_hooks(client):
+    c, _ = client
+    html = c.get("/").text
+    assert "keys.js" in html and 'id="keys-help"' in html and 'role="status"' in html
+    assert 'data-status="encontrada"' in html and 'tabindex="-1"' in html
+    assert 'data-count="enviada"' in html
+    js = c.get("/static/keys.js")
+    assert js.status_code == 200
+    for key in ['"j"', '"k"', '"u"', '"o"', '"?"', 'a: "aprobada"', 'd: "descartada"', 'e: "enviada"']:
+        assert key in js.text, key

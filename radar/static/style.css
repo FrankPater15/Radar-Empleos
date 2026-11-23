@@ -397,6 +397,51 @@ progress.progress-ring::-moz-progress-bar { display: none; background: none; }
 }
 .notes textarea:focus { border-color: var(--accent); }
 
+/* ---------- Atajos de teclado ---------- */
+.results-actions { display: flex; flex-wrap: wrap; gap: 8px; }
+kbd {
+  display: inline-grid; place-items: center; min-width: 1.6em; padding: 0 5px; border: 1px solid var(--line);
+  border-bottom-width: 2px; border-radius: 6px; background: var(--surface-2); color: var(--ink);
+  font: 700 0.78em/1.5 var(--font-mono);
+}
+.btn-small kbd { margin-left: 6px; }
+.job:focus { outline: none; }
+.job:focus-visible, .job.is-current:focus-within {
+  outline: 2px solid var(--accent); outline-offset: 3px; border-radius: var(--radius);
+}
+.job.is-current { border-color: color-mix(in srgb, var(--accent) 55%, var(--line)); }
+.job.is-discarded > :not(header):not(footer) { opacity: 0.55; }
+.job.is-discarded > header { opacity: 0.7; }
+.job[aria-busy="true"] { cursor: progress; }
+@media (forced-colors: active) {
+  .job:focus-visible, .job.is-current { outline: 3px solid Highlight; }
+}
+
+.live {
+  position: fixed; inset: auto 16px 16px auto; z-index: 10; max-width: min(420px, calc(100vw - 32px));
+  padding: 10px 14px; border: 1px solid var(--line); border-radius: 12px; background: var(--ink); color: var(--bg);
+  font-size: 0.88rem; box-shadow: var(--shadow);
+  opacity: 0; translate: 0 8px; pointer-events: none;
+}
+.live.is-visible { opacity: 1; translate: 0 0; }
+.live:empty { display: none; }
+@media (prefers-reduced-motion: no-preference) {
+  .live { transition: opacity 0.2s, translate 0.2s; }
+}
+
+.keys-help {
+  width: min(460px, calc(100vw - 32px)); padding: 20px 22px; border: 1px solid var(--line);
+  border-radius: var(--radius); background: var(--surface); color: var(--ink); box-shadow: var(--shadow);
+}
+.keys-help::backdrop { background: rgb(8 13 18 / 0.55); }
+.keys-help h2 { margin: 0 0 12px; font: 700 1.2rem var(--font-display); }
+.keys-help dl { display: grid; gap: 8px; margin: 0; }
+.keys-help dl > div { display: grid; grid-template-columns: 6.5em minmax(0, 1fr); gap: 10px; align-items: baseline; }
+.keys-help dt { white-space: nowrap; }
+.keys-help dd { margin: 0; font-size: 0.92rem; }
+.keys-help p { color: var(--muted); font-size: 0.84rem; }
+.keys-help form { display: flex; }
+
 .empty { padding: 32px; border: 1px dashed var(--line); border-radius: var(--radius); text-align: center; color: var(--muted); }
 .empty b { color: var(--ink); }
 code { font-family: var(--font-mono); font-size: 0.88em; padding: 1px 6px; border-radius: 6px; background: var(--surface-2); }
