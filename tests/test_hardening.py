@@ -150,3 +150,38 @@ def client_static(name):
     from pathlib import Path
 
     return (Path(main.HERE) / "static" / name).read_text(encoding="utf-8")
+
+
+# ---------- 4. La ingesta no retiene el bloqueo de escritura durante la descarga ----------
+import sqlite3  # noqa: E402
+from contextlib import nullcontext  # noqa: E402
+
+from radar import ingest  # noqa: E402
+from radar.db import make_engine  # noqa: E402
+
+
+def test_ingesta_no_bloquea_la_bd_mientras_descarga(tmp_path, monkeypatch):
+    path = tmp_path / "lock.db"
+    engine = make_engine(f"sqlite:///{path.as_posix()}")
+    init_db(engine)
+    FileSession = sessionmaker(bind=engine, expire_on_commit=False)
+    with FileSession() as s:
+        upsert_jobs(s, [job(id="a:u", source="a", title="Oferta del usuario", company="U")])
+    writes = []
+
+    def lenta():
+        yield job(id="b:1", source="b", title="Soporte TI", company="B")
+        # "el usuario" guarda una nota desde el panel justo en mitad de la descarga
+        other = sqlite3.connect(path, timeout=0.2)
+        try:
+            other.execute("UPDATE jobs SET notes = 'nota' WHERE id = 'a:u'")
+            other.commit()
+            writes.append("ok")
+        finally:
+            other.close()
+        yield job(id="b:2", source="b", title="Otra oferta QA", company="C")
+
+    monkeypatch.setattr(ingest, "source_streams", lambda sources, client, log: iter([("b", lenta())]))
+    results = ingest.run(["b"], log=lambda m: None, session_factory=FileSession, client_factory=nullcontext)
+    assert writes == ["ok"] and results == {"b": (2, 0)}
+    engine.dispose()

@@ -64,6 +64,9 @@ def upsert_jobs(session: Session, jobs: Iterable[dict]) -> tuple[int, int]:
     """
     new = updated = 0
     seen: set[str] = set()
+    # Primero se descarga todo (minutos) y después se escribe (milisegundos): así no se retiene el
+    # bloqueo de escritura de SQLite durante la red y el panel puede guardar estados y notas.
+    jobs = list(jobs)
     for raw in jobs:
         if raw["id"] in seen:  # la misma oferta puede salir en dos categorías o búsquedas
             continue
