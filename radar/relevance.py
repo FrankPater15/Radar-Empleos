@@ -202,7 +202,41 @@ def _salary(get, body: str) -> dict | None:
     return {"min": lo, "max": hi, "moneda": cur, "fuente": "texto"}
 
 
+_REQ_CACHE: dict[tuple, dict] = {}
+_REQ_CACHE_MAX = 8192
+
+
+def _clone_req(req: dict) -> dict:
+    """Copia con las listas y dicts anidados propios: quien reciba el resultado puede modificarlo."""
+    return {**req, "alertas_estafa": list(req["alertas_estafa"]), "bloqueadores": list(req["bloqueadores"]),
+            "salario": dict(req["salario"]) if req["salario"] else None}
+
+
 def extract_requirements(job) -> dict:
+    """Requisitos de la oferta (ver `_extract_requirements`), con caché en memoria.
+
+    El orden "mejor" del panel lo calcula por cada oferta en cada petición (~2 s con 1.500
+    ofertas) y las regex no cambian mientras la oferta no cambie: la clave incluye el contenido
+    que lee la extracción (título, descripción, modalidad, salario) y la configuración de la que
+    depende (nivel de inglés, estudiante), así que editar la oferta o el CV invalida sola.
+    """
+    get = _getter(job)
+    desc = get("description")
+    key = (get("id"), get("title"), hash(desc) if desc else 0, len(desc or ""), get("remote_modality"),
+           get("min_salary"), get("max_salary"), get("salary_currency"),
+           getattr(config, "ENGLISH_LEVEL", None), getattr(config, "IS_STUDENT", None))
+    try:
+        hit = _REQ_CACHE.get(key)
+    except TypeError:  # algún campo no hashable: sin caché
+        return _extract_requirements(job)
+    if hit is None:
+        if len(_REQ_CACHE) >= _REQ_CACHE_MAX:
+            _REQ_CACHE.clear()
+        hit = _REQ_CACHE[key] = _extract_requirements(job)
+    return _clone_req(hit)
+
+
+def _extract_requirements(job) -> dict:
     """Requisitos y bloqueadores de la oferta, extraídos con regex (sin IA).
 
     `job` puede ser un Job o un dict con los mismos campos. Devuelve un dict serializable:

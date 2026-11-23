@@ -280,3 +280,28 @@ def test_init_db_columna_duplicada_no_tumba_el_arranque(tmp_path, monkeypatch):
     monkeypatch.setattr("radar.db.inspect", Stale)
     init_db(engine)  # ALTER ADD COLUMN applied_at -> "duplicate column name": se ignora
     engine.dispose()
+
+
+# ---------- 7. Caché de extract_requirements ----------
+def test_extract_requirements_usa_cache_y_se_invalida(monkeypatch):
+    from radar import relevance
+
+    relevance._REQ_CACHE.clear()
+    llamadas = []
+    real = relevance._extract_requirements
+    monkeypatch.setattr(relevance, "_extract_requirements", lambda j: llamadas.append(1) or real(j))
+    j = job(id="c:1", title="Dev QA", description="Requiere 4 años de experiencia. Inglés fluido.")
+    a = relevance.extract_requirements(j)
+    b = relevance.extract_requirements(j)
+    assert len(llamadas) == 1 and a == b and a["anos_min"] == 4
+    a["bloqueadores"].append("mutado")  # modificar el resultado no contamina la caché
+    assert "mutado" not in relevance.extract_requirements(j)["bloqueadores"]
+    # un Job de otra petición (otro objeto, mismo contenido) también acierta
+    relevance.extract_requirements(Job(**{k: v for k, v in j.items() if k in Job.__table__.columns.keys()}))
+    assert len(llamadas) == 1
+    # cambiar la descripción, o la config de la que depende, recalcula
+    j2 = {**j, "description": "Requiere 1 año de experiencia."}
+    assert relevance.extract_requirements(j2)["anos_min"] != 4 and len(llamadas) == 2
+    monkeypatch.setattr(relevance.config, "ENGLISH_LEVEL", "C1")
+    assert not any("inglés" in x for x in relevance.extract_requirements(j)["bloqueadores"])
+    assert len(llamadas) == 3
