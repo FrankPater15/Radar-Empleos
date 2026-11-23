@@ -6,6 +6,7 @@ faltantes, y una recomendación. Regla dura: la IA solo evalúa, nunca inventa e
 from __future__ import annotations
 
 import hashlib
+import time
 from typing import Literal
 
 from pydantic import BaseModel
@@ -117,3 +118,81 @@ class Scorer:
         result: JobScore = response.parsed_output
         result.score = max(1, min(5, result.score))
         return result
+
+
+# Alias claro para cuando hay varios proveedores
+ClaudeScorer = Scorer
+
+
+class GeminiScorer:
+    """Mismo contrato que Scorer, pero con la API de Gemini (tiene capa gratuita).
+
+    Ojo: en la capa gratuita Google puede usar el contenido para mejorar sus productos,
+    por eso el CV maestro no lleva teléfono, correo ni referencias.
+    """
+
+    def __init__(self, cv_text: str, client=None, model: str | None = None,
+                 fallback_model: str | None = None, max_retries: int = 3, sleep=time.sleep, log=print):
+        if not cv_text.strip():
+            raise ValueError("El CV está vacío")
+        self.cv_text = cv_text
+        self.cv_hash = cv_hash(cv_text)
+        self.model = model or config.GEMINI_MODEL
+        self.fallback_model = fallback_model if fallback_model is not None else config.GEMINI_FALLBACK_MODEL
+        self.max_retries = max_retries
+        self._sleep = sleep
+        self._log = log
+        if client is None:
+            from google import genai
+
+            client = genai.Client()  # lee GEMINI_API_KEY (o GOOGLE_API_KEY)
+        self.client = client
+        self._config = {
+            "system_instruction": SYSTEM_TEMPLATE.format(cv=cv_text),
+            "response_mime_type": "application/json",
+            "response_json_schema": JobScore.model_json_schema(),
+        }
+
+    def _generate(self, job: Job):
+        from google.genai import errors
+
+        for attempt in range(self.max_retries + 1):
+            try:
+                return self.client.models.generate_content(
+                    model=self.model, contents=job_prompt(job), config=self._config
+                )
+            except errors.APIError as e:
+                # 5xx = modelo saturado: cambia al de respaldo para el resto de la corrida
+                if (e.code or 0) >= 500 and self.fallback_model and self.model != self.fallback_model:
+                    self._log(f"  {self.model} no disponible ({e.code}); sigo con {self.fallback_model}")
+                    self.model = self.fallback_model
+                    continue
+                # 429 = límite por minuto de la capa gratuita: esperar y reintentar
+                if (e.code == 429 or (e.code or 0) >= 500) and attempt < self.max_retries:
+                    self._sleep(min(60, 10 * 2 ** attempt))
+                    continue
+                raise ScoringError(f"Gemini falló con {job.id}: {e.code} {e.status}") from e
+
+    def score(self, job: Job) -> JobScore:
+        response = self._generate(job)
+        text = getattr(response, "text", None)
+        if not text:
+            reason = None
+            if getattr(response, "candidates", None):
+                reason = response.candidates[0].finish_reason
+            raise ScoringError(f"Gemini no devolvió respuesta para {job.id} (finish_reason={reason})")
+        try:
+            result = JobScore.model_validate_json(text)
+        except ValueError as e:
+            raise ScoringError(f"JSON inválido de Gemini para {job.id}") from e
+        result.score = max(1, min(5, result.score))
+        return result
+
+
+def make_scorer(cv_text: str, provider: str | None = None):
+    provider = (provider or config.SCORING_PROVIDER).lower()
+    if provider == "gemini":
+        return GeminiScorer(cv_text)
+    if provider in ("anthropic", "claude"):
+        return ClaudeScorer(cv_text)
+    raise ValueError(f"SCORING_PROVIDER desconocido: {provider} (usa gemini o anthropic)")

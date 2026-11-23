@@ -21,8 +21,11 @@ GETONBRD_CATEGORIES = [
 GETONBRD_MAX_PAGES = int(os.getenv("GETONBRD_MAX_PAGES", "5"))
 GETONBRD_PER_PAGE = int(os.getenv("GETONBRD_PER_PAGE", "50"))
 
-# Puntuación con IA (fase 2). Credenciales: ANTHROPIC_API_KEY en el entorno o en .env
+# Puntuación con IA (fase 2). Credenciales en .env: GEMINI_API_KEY o ANTHROPIC_API_KEY
 CV_PATH = os.getenv("CV_PATH", "cv/cv_maestro.md")
+SCORING_PROVIDER = os.getenv("SCORING_PROVIDER", "gemini")  # gemini | anthropic
+GEMINI_MODEL = os.getenv("GEMINI_MODEL", "gemini-3.8-flash")
+GEMINI_FALLBACK_MODEL = os.getenv("GEMINI_FALLBACK_MODEL", "gemini-3.1-flash-lite")
 SCORING_MODEL = os.getenv("SCORING_MODEL", "claude-opus-5-5")
 SCORING_EFFORT = os.getenv("SCORING_EFFORT", "low")  # low | medium | high
 

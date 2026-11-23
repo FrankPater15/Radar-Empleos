@@ -115,3 +115,68 @@ def test_migration_adds_score_columns_to_old_table():
     init_db(engine)
     cols = {c["name"] for c in inspect(engine).get_columns("jobs")}
     assert {"score", "score_data", "score_cv_hash", "scored_at", "status"} <= cols
+
+
+# ---------- Gemini ----------
+from google.genai import errors as genai_errors
+
+from radar.scoring import GeminiScorer, make_scorer
+
+
+class FakeGeminiModels:
+    def __init__(self, results):
+        self.results = list(results)
+        self.calls = []
+
+    def generate_content(self, **kwargs):
+        self.calls.append(kwargs)
+        r = self.results.pop(0)
+        if isinstance(r, Exception):
+            raise r
+        return SimpleNamespace(text=r, candidates=[SimpleNamespace(finish_reason="STOP")])
+
+
+def gemini_client(*results):
+    return SimpleNamespace(models=FakeGeminiModels(results))
+
+
+def test_gemini_request_and_parse():
+    client = gemini_client(js(5).model_dump_json())
+    scorer = GeminiScorer("Mi CV", client=client, model="gemini-3.8-flash")
+    assert scorer.score(Job(**sample())).score == 5
+    call = client.models.calls[0]
+    assert call["model"] == "gemini-3.8-flash"
+    assert "Mi CV" in call["config"]["system_instruction"]
+    assert call["config"]["response_mime_type"] == "application/json"
+    assert "Mi CV" not in call["contents"]
+
+
+def test_gemini_retries_rate_limit_then_succeeds():
+    rate = genai_errors.ClientError(429, {"error": {"code": 429, "status": "RESOURCE_EXHAUSTED", "message": "x"}})
+    sleeps = []
+    scorer = GeminiScorer("cv", client=gemini_client(rate, js(3).model_dump_json()), fallback_model="", sleep=sleeps.append)
+    assert scorer.score(Job(**sample())).score == 3
+    assert sleeps == [10]
+
+
+def test_gemini_bad_output_and_auth_error_raise_scoring_error():
+    auth = genai_errors.ClientError(400, {"error": {"code": 400, "status": "INVALID_ARGUMENT", "message": "key"}})
+    scorer = GeminiScorer("cv", client=gemini_client("no es json", None, auth), fallback_model="", sleep=lambda s: None)
+    for _ in range(3):
+        with pytest.raises(ScoringError):
+            scorer.score(Job(**sample()))
+
+
+def test_make_scorer_rejects_unknown_provider():
+    with pytest.raises(ValueError):
+        make_scorer("cv", "openai")
+
+
+def test_gemini_switches_to_fallback_on_503():
+    busy = genai_errors.ServerError(503, {"error": {"code": 503, "status": "UNAVAILABLE", "message": "x"}})
+    client = gemini_client(busy, js(4).model_dump_json(), js(2).model_dump_json())
+    scorer = GeminiScorer("cv", client=client, model="gemini-3.8-flash", fallback_model="gemini-3.1-flash-lite",
+                          sleep=lambda s: pytest.fail("no debe esperar"), log=lambda *_: None)
+    assert scorer.score(Job(**sample())).score == 4
+    assert scorer.score(Job(**sample())).score == 2  # se queda con el respaldo
+    assert [c["model"] for c in client.models.calls] == ["gemini-3.8-flash", "gemini-3.1-flash-lite", "gemini-3.1-flash-lite"]

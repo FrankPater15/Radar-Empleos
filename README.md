@@ -13,7 +13,7 @@ Agente personal de búsqueda de empleo para Colombia. Junta ofertas de fuentes *
 - [x] Embudo de estados: encontrada → aprobada → enviada → entrevista → oferta/rechazo (o descartada)
 - [x] API JSON en `/api/jobs` (base para el panel React y la app Android)
 - [x] Tests (pytest)
-- [x] **Fase 2:** puntuación con Claude contra tu CV maestro: nota de 1 a 5, recomendación, requisitos cumplidos y faltantes, y señales de alerta (JSON estructurado validado con Pydantic)
+- [x] **Fase 2:** puntuación con IA (Gemini gratis o Claude) contra tu CV maestro: nota de 1 a 5, recomendación, requisitos cumplidos y faltantes, y señales de alerta (JSON estructurado validado con Pydantic)
 - [x] Solo puntúa lo pendiente: las ofertas ya puntuadas no se repiten, y si cambias el CV se vuelven a puntuar
 - [x] Panel: badge de nota, filtro "Nota ≥ N" y orden por mejor nota
 
@@ -49,7 +49,9 @@ Abre http://127.0.0.1:8000.
 ### Puntuación con IA (fase 2)
 
 1. Copia `cv/cv_maestro.example.md` a `cv/cv_maestro.md` y complétalo con datos reales. Git lo ignora, así que no se sube.
-2. Crea una API key en https://platform.claude.com y ponla en `.env` como `ANTHROPIC_API_KEY=...`. La API se paga aparte de la suscripción Claude Pro.
+2. Elige un proveedor en `.env`:
+   - **Gemini (por defecto, gratis):** crea la key en https://aistudio.google.com y ponla como `GEMINI_API_KEY=...`. En la capa gratuita Google puede usar lo que envías para mejorar sus productos, por eso el CV maestro no lleva teléfono, correo ni referencias.
+   - **Claude (de pago):** pon `SCORING_PROVIDER=anthropic` y `ANTHROPIC_API_KEY=...`. La API se paga aparte de Claude Pro.
 3. Ejecuta:
 
 ```powershell
@@ -59,9 +61,9 @@ python -m radar.score --limit 10     # empieza con pocas para ver el costo
 **Opciones:** `--rescore` vuelve a puntuar todo; `--all-countries` incluye ofertas no abiertas a Colombia.
 
 **Cómo funciona:**
-- **Modelo:** por defecto `claude-opus-5-5` con `effort=low`. Se cambia con `SCORING_MODEL` y `SCORING_EFFORT`.
-- **Caché del CV:** el CV y la rúbrica van en el system prompt con caché de prompts, así que solo la oferta cambia entre llamadas.
-- **Rechazos:** si el modelo rechaza una petición, el fallback del servidor la reintenta con otro modelo.
+- **Misma rúbrica en los dos proveedores:** el CV y la rúbrica van en las instrucciones del sistema y la oferta en el mensaje, y la respuesta es un JSON validado con Pydantic.
+- **Gemini:** usa `gemini-3.8-flash`. Si está saturado (503), cambia a `gemini-3.1-flash-lite` durante el resto de la corrida. Ante el límite por minuto (429) espera y reintenta. Cada nota guarda qué modelo la generó.
+- **Claude:** usa `claude-opus-5-5` con `effort=low`, caché de prompts para el CV y fallback del servidor si el modelo rechaza la petición.
 
 Opciones de la ingesta:
 
@@ -84,7 +86,7 @@ radar/
   models.py            modelo Job y estados del embudo
   sources/getonbrd.py  cliente de la API: paginación, pausa entre peticiones, HTML a texto
   ingest.py            upsert idempotente (no toca status ni first_seen_at)
-  scoring.py           rúbrica + llamada a Claude con salida estructurada (JobScore)
+  scoring.py           rúbrica + GeminiScorer / ClaudeScorer con salida estructurada (JobScore)
   score.py             CLI: puntúa las pendientes y guarda una por una
   main.py              FastAPI: panel HTML, /api/jobs, cambio de estado
   templates/, static/  vista

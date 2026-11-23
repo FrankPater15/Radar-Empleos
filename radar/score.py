@@ -12,7 +12,7 @@ from sqlalchemy.orm import Session
 from radar import config
 from radar.db import SessionLocal, init_db
 from radar.models import Job, utcnow
-from radar.scoring import Scorer, ScoringError
+from radar.scoring import ScoringError, make_scorer
 
 
 def pending_jobs(session: Session, cv_hash: str, limit: int, only_colombia: bool = True,
@@ -27,7 +27,7 @@ def pending_jobs(session: Session, cv_hash: str, limit: int, only_colombia: bool
     return list(session.scalars(stmt))
 
 
-def score_pending(session: Session, scorer: Scorer, limit: int, only_colombia: bool = True,
+def score_pending(session: Session, scorer, limit: int, only_colombia: bool = True,
                   rescore: bool = False, log=print) -> tuple[int, int]:
     ok = failed = 0
     for job in pending_jobs(session, scorer.cv_hash, limit, only_colombia, rescore):
@@ -38,7 +38,7 @@ def score_pending(session: Session, scorer: Scorer, limit: int, only_colombia: b
             failed += 1
             continue
         job.score = result.score
-        job.score_data = result.model_dump()
+        job.score_data = {**result.model_dump(), "model": scorer.model}
         job.score_cv_hash = scorer.cv_hash
         job.scored_at = utcnow()
         session.commit()  # guarda una por una: si algo falla a mitad, no se pierde lo hecho
@@ -48,29 +48,31 @@ def score_pending(session: Session, scorer: Scorer, limit: int, only_colombia: b
 
 
 def main() -> None:
-    p = argparse.ArgumentParser(description="Puntúa ofertas contra tu CV con Claude.")
+    if hasattr(sys.stdout, "reconfigure"):
+        sys.stdout.reconfigure(encoding="utf-8")  # tildes en la consola de Windows
+    p = argparse.ArgumentParser(description="Puntúa ofertas contra tu CV con IA (Gemini o Claude).")
     p.add_argument("--limit", type=int, default=20, help="máximo de ofertas a puntuar (controla el costo)")
     p.add_argument("--all-countries", action="store_true", help="incluir ofertas no abiertas a Colombia")
     p.add_argument("--rescore", action="store_true", help="volver a puntuar aunque ya tengan nota")
     p.add_argument("--cv", default=config.CV_PATH)
+    p.add_argument("--provider", default=config.SCORING_PROVIDER, help="gemini o anthropic")
     args = p.parse_args()
 
     cv_path = Path(args.cv)
     if not cv_path.exists():
         sys.exit(f"No encuentro el CV en {cv_path}. Copia cv/cv_maestro.example.md a {cv_path} y complétalo.")
 
-    import anthropic
-
-    if not (os.getenv("ANTHROPIC_API_KEY") or os.getenv("ANTHROPIC_AUTH_TOKEN")):
+    provider = args.provider.lower()
+    if provider == "gemini" and not (os.getenv("GEMINI_API_KEY") or os.getenv("GOOGLE_API_KEY")):
+        sys.exit("Falta GEMINI_API_KEY. Créala gratis en https://aistudio.google.com y ponla en .env")
+    if provider in ("anthropic", "claude") and not (os.getenv("ANTHROPIC_API_KEY") or os.getenv("ANTHROPIC_AUTH_TOKEN")):
         sys.exit("Falta ANTHROPIC_API_KEY. Créala en https://platform.claude.com y ponla en .env")
 
     init_db()
-    scorer = Scorer(cv_path.read_text(encoding="utf-8"))
+    scorer = make_scorer(cv_path.read_text(encoding="utf-8"), provider)
+    print(f"Proveedor: {provider} · modelo: {scorer.model}")
     with SessionLocal() as session:
-        try:
-            ok, failed = score_pending(session, scorer, args.limit, not args.all_countries, args.rescore)
-        except anthropic.AuthenticationError:
-            sys.exit("Falta la API key de Anthropic o no es válida: define ANTHROPIC_API_KEY en .env")
+        ok, failed = score_pending(session, scorer, args.limit, not args.all_countries, args.rescore)
     print(f"Puntuadas: {ok}  fallidas: {failed}")
 
 
