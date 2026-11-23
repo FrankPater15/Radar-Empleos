@@ -15,7 +15,7 @@ from radar import config
 from radar.db import SessionLocal, init_db
 from radar.models import Job
 from radar.relevance import fit
-from radar.sources import getonbrd, himalayas, jobicy
+from radar.sources import ats, getonbrd, himalayas, jobicy
 from radar.sources.common import make_client
 
 # Campos que la ingesta puede actualizar. status y first_seen_at pertenecen al usuario.
@@ -112,6 +112,11 @@ def source_streams(sources: list[str], client, log=print) -> Iterator[tuple[str,
             yield name, himalayas.fetch_all(config.SEARCH_QUERIES, config.HIMALAYAS_MAX_PAGES, client, log)
         elif name == "jobicy":
             yield name, jobicy.fetch_all(config.JOBICY_INDUSTRIES, client, log)
+        elif name == "ats":
+            if config.ATS_ENABLED:
+                yield name, ats.fetch_all(client=client, log=log)
+        elif name == "remoteok":
+            yield name, ats.fetch_remoteok(client, log)
         else:
             log(f"  ! fuente desconocida: {name}")
 

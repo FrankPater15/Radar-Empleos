@@ -54,7 +54,7 @@ def _list(name: str, default: str) -> list[str]:
 
 
 # Fuentes activas (todas son APIs públicas que permiten este uso)
-SOURCES = _list("SOURCES", "getonbrd,himalayas,jobicy")
+SOURCES = _list("SOURCES", "getonbrd,himalayas,jobicy,ats")
 
 # Búsquedas de texto en Get on Board y Himalayas (Himalayas ya filtra a ofertas abiertas a Colombia)
 SEARCH_QUERIES = _list(
@@ -85,3 +85,7 @@ SCORING_EFFORT = os.getenv("SCORING_EFFORT", "low")  # low | medium | high
 
 # Identificador honesto del cliente; no incluye datos personales
 USER_AGENT = "radar-empleo-co/0.1 (+personal job search tool)"
+
+# Fuente ATS: tableros publicos de empresas (Greenhouse, Lever, Ashby, SmartRecruiters, Workable, BambooHR)
+ATS_COMPANIES_FILE = str(project_path(os.getenv("ATS_COMPANIES_FILE", "radar/sources/ats_companies.json")))
+ATS_ENABLED = os.getenv("ATS_ENABLED", "1").strip().lower() not in ("0", "false", "no", "")
