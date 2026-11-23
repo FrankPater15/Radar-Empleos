@@ -396,3 +396,58 @@ def test_score_batch_conserva_resultados_si_una_oferta_revienta():
     # la API caída por completo (excepción rara) tampoco revienta
     scorer = GeminiScorer("cv", client=gemini_client(RuntimeError("x")), fallback_model="", rpm=0)
     assert all(isinstance(r, ScoringError) for r in scorer.score_batch(jobs))
+
+
+# ---------- 9. relevance.py: bugs verificados ----------
+from radar.relevance import extract_requirements, fit  # noqa: E402
+
+
+def _nivel(title):
+    return [w for w in fit(job(title=title, description="", seniority=None))[1] if "nivel" in w]
+
+
+@pytest.mark.parametrize("title", ["Prácticas profesionales de software", "Practicantes de software",
+                                   "Interns developer", "Pasantes de TI", "Aprendices de desarrollo",
+                                   "Trainees Backend", "Desarrollador Juniors", "Internships QA"])
+def test_plurales_junior(title):
+    assert _nivel(title) == ["+25 nivel junior"]
+
+
+@pytest.mark.parametrize("desc,esperado", [
+    ("Requiere 1 año de experiencia", 1), ("Un año de experiencia en soporte", 1),
+    ("Mínimo 2 años de experiencia", 2), ("1 year of experience", 1),
+    ("Experiencia mínima: 3 años en desarrollo", 3),
+    ("Se valoran 10 anotaciones de experiencia", None),  # "anotaciones" no es "años"
+    ("4+ years of professional software engineering experience.", 4),
+])
+def test_anos_de_experiencia(desc, esperado):
+    assert extract_requirements(job(description=desc))["anos_min"] == esperado
+
+
+def test_anos_usa_la_primera_mencion_junto_a_experiencia():
+    r = extract_requirements(job(description="Junior: 1 year of experience. Senior track: 6 years of experience."))
+    assert r["anos_min"] == 1 and not any("años" in b for b in r["bloqueadores"])
+    assert extract_requirements(job(description="2 years of experience in QA. 5 years of experience in Java."))["anos_min"] == 2
+    # cifras sueltas (sin experiencia cerca) no cuentan
+    assert extract_requirements(job(description="Empresa con 15 años en el mercado. " + "x " * 60 + "Se ofrece 5 años de contrato"))["anos_min"] is None
+
+
+@pytest.mark.parametrize("desc,esperado", [
+    ("We have offices in the Philippines, USA and Brazil. We hire in Colombia.", None),
+    ("Presence in twenty-three locations across twelve countries, including the Philippines, India, and the United States.", None),
+    ("Our clients in the Philippines and India love us.", None),
+    ("Must be based in the U.S. or Colombia.", None),
+    ("Candidates must be located in the Philippines.", "Filipinas"),
+    ("You can work anywhere in the Philippines. Job opening exclusive only to Filipino locals", "Filipinas"),
+    ("Philippines-based only", "Filipinas"),
+    ("We are looking for residents of the Philippines.", "Filipinas"),
+    ("Must be based in the US only, no exceptions", "EE. UU."),
+    ("Must be a U.S. citizen", "EE. UU."),
+])
+def test_pais_restringido(desc, esperado):
+    assert extract_requirements(job(description=desc))["pais_restringido"] == esperado
+
+
+def test_oferta_con_mencion_suelta_de_filipinas_no_se_penaliza():
+    j = job(title="Intern Talent Acquisition", description="BPO con presencia en the Philippines, India, and the United States.")
+    assert "Filipinas" not in " ".join(fit(j)[1])
