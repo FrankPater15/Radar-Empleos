@@ -451,3 +451,25 @@ def test_pais_restringido(desc, esperado):
 def test_oferta_con_mencion_suelta_de_filipinas_no_se_penaliza():
     j = job(title="Intern Talent Acquisition", description="BPO con presencia en the Philippines, India, and the United States.")
     assert "Filipinas" not in " ".join(fit(j)[1])
+
+
+# ---------- 10. Google Fonts opcional ----------
+def test_google_fonts_se_puede_desactivar(client, monkeypatch):
+    assert "fonts.googleapis.com" in client.get("/").text  # por defecto, igual que antes
+    monkeypatch.setitem(main.templates.env.globals, "google_fonts", False)
+    html = client.get("/").text
+    assert "googleapis" not in html and "gstatic" not in html and "style.css" in html
+
+
+def test_config_google_fonts_lee_el_entorno(monkeypatch):
+    import importlib
+
+    from radar import config as cfg
+
+    try:
+        monkeypatch.setenv("GOOGLE_FONTS", "0")
+        assert importlib.reload(cfg).GOOGLE_FONTS is False
+        monkeypatch.delenv("GOOGLE_FONTS")
+        assert importlib.reload(cfg).GOOGLE_FONTS is True
+    finally:
+        importlib.reload(cfg)

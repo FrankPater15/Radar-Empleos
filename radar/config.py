@@ -74,6 +74,8 @@ SKILLS = _list(
     "microsoft graph,express,tailwind,vite,azure",
 )
 MIN_FIT = int(os.getenv("MIN_FIT", "45"))
+# Panel: cargar las tipografías de Google Fonts (contacta a Google en cada visita). 0 = fuentes del sistema
+GOOGLE_FONTS = os.getenv("GOOGLE_FONTS", "1").strip().lower() not in ("0", "false", "no", "off")
 
 # PuntuaciÃ³n con IA (fase 2). Credenciales en .env: GEMINI_API_KEY o ANTHROPIC_API_KEY
 CV_PATH = str(project_path(os.getenv("CV_PATH", "cv/cv_maestro.md")))

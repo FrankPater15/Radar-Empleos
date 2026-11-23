@@ -16,6 +16,7 @@ from fastapi.templating import Jinja2Templates
 from sqlalchemy import func, or_, select
 from sqlalchemy.orm import Session
 
+from radar import config
 from radar.db import SessionLocal, init_db
 from radar.models import STATUSES, Job
 from radar.relevance import extract_requirements, rank_value
@@ -72,6 +73,7 @@ templates.env.globals["SOURCE_NAMES"] = SOURCE_NAMES
 templates.env.globals["es_nueva"] = es_nueva
 templates.env.globals["requisitos"] = extract_requirements
 templates.env.globals["safe_url"] = safe_url
+templates.env.globals["google_fonts"] = config.GOOGLE_FONTS
 
 
 @asynccontextmanager

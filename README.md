@@ -134,6 +134,12 @@ Las rutas relativas (`DATABASE_URL=sqlite:///radar.db`, `CV_PATH`, `LOG_FILE`) s
 
 Sin JavaScript, los botones siguen funcionando como formularios normales.
 
+### Seguridad y privacidad del panel
+
+- El panel no tiene login: solo escucha en `127.0.0.1` (no uses `--host 0.0.0.0`). Rechaza peticiones con un `Host` distinto de `127.0.0.1`/`localhost` (DNS rebinding) y los `POST` que vengan de otro origen (CSRF), y envía `X-Frame-Options: DENY`, `Referrer-Policy: no-referrer` y `X-Content-Type-Options: nosniff`.
+- Las URLs de las ofertas solo se aceptan si son `http(s)`, y el CSV exportado neutraliza las celdas que Excel ejecutaría como fórmula.
+- **Tipografías:** por defecto el panel carga Bricolage Grotesque, Instrument Sans y JetBrains Mono desde Google Fonts, lo que hace que el navegador contacte a Google cada vez que abres el panel. Para evitarlo pon `GOOGLE_FONTS=0` en `.env`: se usan las fuentes del sistema (Segoe UI/system-ui y Cascadia Mono), que ya son el respaldo en `static/style.css`. Si quieres conservar el aspecto, descarga los `.woff2` de las tres familias (por ejemplo desde https://gwfh.mranftl.com/fonts), guárdalos en `radar/static/fonts/` y añade al inicio de `radar/static/style.css` un `@font-face { font-family: "Instrument Sans"; src: url("/static/fonts/instrument-sans.woff2") format("woff2"); font-display: swap; }` por cada familia y peso. No hay CSP estricta porque la plantilla usa un `<script>` y estilos en línea.
+
 Tests:
 
 ```powershell
