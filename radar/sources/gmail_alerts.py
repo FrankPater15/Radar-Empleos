@@ -11,7 +11,7 @@ Puesta en marcha (una vez):
      secrets/gmail_muestras/ para escribir los lectores de cada formato.
 
 Desde ahí la ingesta usa la fuente "gmail": cada correo se pasa al lector de su remitente
-(hoy LinkedIn; los que no tienen lector, como Computrabajo por ahora, se cuentan y se omiten).
+(LinkedIn y Computrabajo; los que no tienen lector se cuentan y se omiten).
 """
 from __future__ import annotations
 
@@ -28,7 +28,7 @@ from pathlib import Path
 from typing import Callable, Iterator
 
 from radar import config
-from radar.sources import linkedin_mail
+from radar.sources import computrabajo_mail, linkedin_mail
 from radar.sources.common import PARSE_ERRORS
 
 SCOPES = ["https://www.googleapis.com/auth/gmail.readonly"]  # solo lectura
@@ -147,6 +147,7 @@ def search(service, query: str | None = None, max_results: int = 50) -> list[Mai
 # Dominio del remitente -> lector de ese formato de correo
 READERS: dict[str, Callable[[str, datetime | None], list[dict]]] = {
     "linkedin.com": linkedin_mail.parse_alert,
+    "computrabajo.com": computrabajo_mail.parse_alert,
 }
 
 

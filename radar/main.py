@@ -20,7 +20,7 @@ from radar import config, score
 from radar.db import SessionLocal, init_db
 from radar.models import STATUSES, Job
 from radar.relevance import extract_requirements, fit, rank_value
-from radar.sources import ats, getonbrd, himalayas, jobicy, linkedin_mail
+from radar.sources import ats, computrabajo_mail, getonbrd, himalayas, jobicy, linkedin_mail
 from radar.sources.common import safe_url
 from radar.tracking import (apply_status, count_follow_ups, count_new, export_csv, follow_up,
                             follow_up_due_clause, new_since)
@@ -28,14 +28,14 @@ from radar.tracking import (apply_status, count_follow_ups, count_new, export_cs
 HERE = Path(__file__).parent
 templates = Jinja2Templates(directory=HERE / "templates")
 
-SOURCE_NAMES = {m.SOURCE: m.SOURCE_NAME for m in (getonbrd, himalayas, jobicy, ats, linkedin_mail)}
+SOURCE_NAMES = {m.SOURCE: m.SOURCE_NAME for m in (getonbrd, himalayas, jobicy, ats, linkedin_mail, computrabajo_mail)}
 SOURCE_NAMES[ats.REMOTEOK_SOURCE] = ats.REMOTEOK_NAME
 ORDERS = {"mejor": "Mejor encaje", "afinidad": "Afinidad", "nota": "Nota IA", "recientes": "Más recientes"}
 COLOMBIA_TZ = timezone(timedelta(hours=-5), "COT")  # Colombia no tiene horario de verano
 NOTES_MAX = 5000
 DESCRIPTION_MAX = 20_000
 # Fuentes cuyas ofertas llegan sin descripción (alertas por correo): el panel deja pegarla
-PASTE_SOURCES = {linkedin_mail.SOURCE, "computrabajo"}
+PASTE_SOURCES = {linkedin_mail.SOURCE, computrabajo_mail.SOURCE}
 
 
 def _aware(dt: datetime) -> datetime:

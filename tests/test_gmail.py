@@ -177,7 +177,7 @@ def test_reader_is_chosen_by_exact_sender_domain():
     assert gm.reader_for("jobalerts-noreply@linkedin.com") is li.parse_alert
     assert gm.reader_for("x@mail.linkedin.com") is li.parse_alert
     assert gm.reader_for("x@fake-linkedin.com") is None
-    assert gm.reader_for("sin-respuesta@computrabajo.com") is None  # aún sin lector
+    assert gm.reader_for("alertas@computrabajo.com") is gm.computrabajo_mail.parse_alert
 
 
 def test_fetch_all_reads_oldest_first_and_skips_senders_without_reader():
@@ -185,7 +185,7 @@ def test_fetch_all_reads_oldest_first_and_skips_senders_without_reader():
     newest["internalDate"] = "1795000000000"
     oldest = message("o", html=card("222", "Desarrollador Junior Python", "Acme S.A.S. · Medellín (Híbrido)"))
     oldest["internalDate"] = "1790000000000"
-    welcome = message("w", html="<p>Bienvenida</p>", sender="sin-respuesta@computrabajo.com")
+    welcome = message("w", html="<p>Bienvenida</p>", sender="x@otro.com")
     logs = []
     jobs = list(gm.fetch_all(FakeGmail([[welcome, newest, oldest]]), "q", 10, log=logs.append))
     assert [j["external_id"] for j in jobs] == ["222", "222", "333", "444"]

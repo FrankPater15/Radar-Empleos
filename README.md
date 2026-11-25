@@ -34,7 +34,7 @@ Agente personal de búsqueda de empleo para Colombia. Junta ofertas de fuentes *
 | Fase | Contenido |
 |---|---|
 | 1 ✅ | Get on Board, base de datos y panel con filtros y estados |
-| 1b 🟡 | Lectura de **tus propios correos de alertas** con la API de Gmail (OAuth, solo lectura): LinkedIn listo, Computrabajo pendiente |
+| 1b ✅ | Lectura de **tus propios correos de alertas** con la API de Gmail (OAuth, solo lectura): LinkedIn y Perfect Match de Computrabajo |
 | 2 ✅ | Puntuación con LLM (nota de 1 a 5, requisitos cumplidos y faltantes, en JSON) |
 | 2b | CV adaptado por oferta en PDF. **Regla: nunca inventar experiencia** |
 | 3 | Login JWT, WebSockets ("nueva oferta 4,5/5" en tiempo real), métricas del embudo |
@@ -191,8 +191,8 @@ Nunca visita LinkedIn: saca cada oferta del HTML del correo.
   "solicita ya" y empleos guardados. De cada tarjeta toma título, empresa, ciudad y modalidad, y guarda un
   enlace limpio `linkedin.com/jobs/view/ID/` (sin los parámetros de rastreo del correo). El correo no trae
   la descripción, así que el prefiltro y la IA puntúan con el título, la empresa y el lugar.
-- **Computrabajo:** pendiente hasta que lleguen alertas reales para escribir su lector. Mientras tanto
-  esos correos se cuentan como "sin lector" y se omiten.
+- **Computrabajo ✅** (`radar/sources/computrabajo_mail.py`): el correo semanal "Perfect Match" (una oferta).
+  Sus otros correos conocidos solo enlazan a búsquedas y no aportan ofertas.
 
 La fuente `gmail` está en `SOURCES` por defecto. Si todavía no autorizaste, la ingesta solo lo avisa y
 sigue con las demás. `GMAIL_MAX_MESSAGES` (100) limita los correos leídos por corrida.
