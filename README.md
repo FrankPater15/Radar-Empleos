@@ -1,5 +1,9 @@
 # Radar de Empleo CO
 
+[![Tests](https://github.com/FrankPater15/Radar-Empleos/actions/workflows/tests.yml/badge.svg)](https://github.com/FrankPater15/Radar-Empleos/actions/workflows/tests.yml)
+
+![Panel con ofertas ficticias](capturas/panel.png)
+
 Agente personal de búsqueda de empleo para Colombia. Junta ofertas de fuentes **permitidas**, las guarda en una base de datos y las muestra en un panel donde decides qué hacer con cada una.
 
 > **Human-in-the-loop y respeto de los ToS.** El radar **no** se postula solo ni hace scraping de LinkedIn ni de Computrabajo, porque sus términos lo prohíben. Busca, filtra y organiza. La postulación la haces tú.
@@ -53,6 +57,14 @@ uvicorn radar.main:app --reload
 ```
 
 Abre http://127.0.0.1:8000.
+
+### Probarlo con datos ficticios
+
+```powershell
+$env:DATABASE_URL = "sqlite:///demo.db"
+python scripts/demo.py
+uvicorn radar.main:app
+```
 
 ### Puntuación con IA (fase 2)
 
@@ -108,9 +120,7 @@ powershell -ExecutionPolicy Bypass -File scripts\desinstalar_tarea.ps1  # quitar
 - Solo trae y puntúa ofertas. **Nunca postula ni contacta a nadie.**
 - Al terminar muestra un aviso de Windows (paquete `win11toast`). El clic abre http://127.0.0.1:8000/?nuevas=1, así que el panel (`uvicorn`) debe estar corriendo.
 
-**La base de datos está en OneDrive.** `radar.db` vive en la carpeta del proyecto, que OneDrive sincroniza. La base usa el modo WAL (archivos `radar.db-wal` y `radar.db-shm`) y espera hasta 15 s si está ocupada, pero si OneDrive la bloquea o sube una copia a mitad de una escritura puede haber errores o conflictos. Conviene una de estas dos opciones:
-- Mover la base fuera de OneDrive: en `.env`, `DATABASE_URL=sqlite:///C:/Users/<usuario>/radar-data/radar.db`.
-- O sacar el proyecto (o al menos la base) de la carpeta sincronizada: OneDrive personal no permite excluir archivos sueltos, así que lo práctico es la opción anterior o mover el proyecto fuera de `Desktop`/`Documentos` si están respaldados por OneDrive. Antes de mover la base, cierra el panel y la tarea, y copia juntos `radar.db`, `radar.db-wal` y `radar.db-shm`.
+Si guardas el proyecto en una carpeta sincronizada (OneDrive, Dropbox), conviene mover la base fuera con `DATABASE_URL` en `.env`, para evitar bloqueos y copias en conflicto.
 
 Las rutas relativas (`DATABASE_URL=sqlite:///radar.db`, `CV_PATH`, `LOG_FILE`) se resuelven contra la raíz del proyecto, no contra el directorio desde el que se ejecuta el comando.
 
@@ -242,3 +252,7 @@ tests/                 tests de parser, upsert y endpoints, con una respuesta re
 - Los salarios se muestran en USD/mes; los anuales (Jobicy, algunos de Himalayas) se dividen entre 12.
 - Jobicy y Himalayas piden citarlos como fuente y enlazar a la oferta original: el panel muestra la fuente y el botón *Ver oferta* abre la publicación original.
 - El prefiltro es deliberadamente simple y explicable; la nota fina la pone la IA.
+
+## Licencia
+
+[MIT](LICENSE). Cada fuente de ofertas tiene sus propios términos: revísalos antes de usarla.
