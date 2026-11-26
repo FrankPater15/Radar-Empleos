@@ -1,0 +1,79 @@
+{%- set t = {"summary": "Profile", "skills": "Skills", "projects": "Projects", "experience": "Experience",
+                "education": "Education", "languages": "Languages"} if english else
+               {"summary": "Perfil", "skills": "Habilidades", "projects": "Proyectos", "experience": "Experiencia",
+                "education": "Formación", "languages": "Idiomas"} -%}
+<!doctype html>
+<html lang="{{ 'en' if english else 'es' }}">
+<head>
+<meta charset="utf-8">
+<title>{{ name }} · CV</title>
+<style>
+  @page { size: Letter; margin: 14mm 16mm; }
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+  body { font: 10.5pt/1.42 "Segoe UI", Calibri, Arial, sans-serif; color: #1d1d1f; }
+  header { border-bottom: 2px solid #1d1d1f; padding-bottom: 8px; margin-bottom: 10px; }
+  h1 { font-size: 22pt; letter-spacing: -.3px; line-height: 1.1; }
+  .headline { font-size: 11.5pt; color: #3a3a3c; margin-top: 2px; }
+  .links { font-size: 9.5pt; color: #3a3a3c; margin-top: 4px; }
+  .links span + span::before { content: "  ·  "; color: #8e8e93; }
+  h2 { font-size: 10pt; text-transform: uppercase; letter-spacing: 1.2px; color: #1d1d1f;
+       margin: 12px 0 5px; border-bottom: 1px solid #d1d1d6; padding-bottom: 2px; }
+  .skills { display: flex; flex-wrap: wrap; gap: 4px 6px; }
+  .skills span { border: 1px solid #c7c7cc; border-radius: 3px; padding: 0 6px; font-size: 9.5pt; }
+  .item { margin-bottom: 7px; break-inside: avoid; }
+  .item-head { display: flex; justify-content: space-between; gap: 12px; }
+  .item-head strong { font-size: 10.5pt; }
+  .meta { color: #6e6e73; font-size: 9.5pt; white-space: nowrap; }
+  .stack { color: #3a3a3c; font-size: 9.5pt; font-style: italic; }
+  ul { padding-left: 15px; margin-top: 2px; }
+  li { margin-bottom: 1px; }
+  .plain li { list-style: none; margin-left: -15px; }
+</style>
+</head>
+<body>
+<header>
+  <h1>{{ name }}</h1>
+  <p class="headline">{{ cv.headline }}</p>
+  {% if links %}<p class="links">{% for l in links %}<span>{{ l }}</span>{% endfor %}</p>{% endif %}
+</header>
+
+<h2>{{ t.summary }}</h2>
+<p>{{ cv.summary }}</p>
+
+{% if cv.skills %}
+<h2>{{ t.skills }}</h2>
+<div class="skills">{% for s in cv.skills %}<span>{{ s }}</span>{% endfor %}</div>
+{% endif %}
+
+{% if cv.experience %}
+<h2>{{ t.experience }}</h2>
+{% for e in cv.experience %}
+<div class="item">
+  <div class="item-head"><strong>{{ e.role }} · {{ e.org }}</strong><span class="meta">{{ e.period }}</span></div>
+  <ul>{% for b in e.bullets %}<li>{{ b }}</li>{% endfor %}</ul>
+</div>
+{% endfor %}
+{% endif %}
+
+{% if cv.projects %}
+<h2>{{ t.projects }}</h2>
+{% for p in cv.projects %}
+<div class="item">
+  <div class="item-head"><strong>{{ p.name }}</strong></div>
+  {% if p.stack %}<p class="stack">{{ p.stack }}</p>{% endif %}
+  <ul>{% for b in p.bullets %}<li>{{ b }}</li>{% endfor %}</ul>
+</div>
+{% endfor %}
+{% endif %}
+
+{% if cv.education %}
+<h2>{{ t.education }}</h2>
+<ul class="plain">{% for e in cv.education %}<li>{{ e }}</li>{% endfor %}</ul>
+{% endif %}
+
+{% if cv.languages %}
+<h2>{{ t.languages }}</h2>
+<ul class="plain">{% for l in cv.languages %}<li>{{ l }}</li>{% endfor %}</ul>
+{% endif %}
+</body>
+</html>

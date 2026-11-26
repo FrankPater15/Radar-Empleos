@@ -10,13 +10,13 @@ from urllib.parse import parse_qsl, urlencode, urlsplit
 
 from fastapi import Depends, FastAPI, Form, HTTPException, Request
 from fastapi.middleware.trustedhost import TrustedHostMiddleware
-from fastapi.responses import HTMLResponse, JSONResponse, RedirectResponse, Response
+from fastapi.responses import FileResponse, HTMLResponse, JSONResponse, RedirectResponse, Response
 from fastapi.staticfiles import StaticFiles
 from fastapi.templating import Jinja2Templates
 from sqlalchemy import func, or_, select
 from sqlalchemy.orm import Session
 
-from radar import config, score
+from radar import config, cv_adapt, score
 from radar.db import SessionLocal, init_db
 from radar.models import STATUSES, Job
 from radar.relevance import extract_requirements, fit, rank_value
@@ -78,6 +78,7 @@ templates.env.globals["requisitos"] = extract_requirements
 templates.env.globals["safe_url"] = safe_url
 templates.env.globals["google_fonts"] = config.GOOGLE_FONTS
 templates.env.globals["paste_sources"] = PASTE_SOURCES
+templates.env.globals["cv_listo"] = lambda j: cv_adapt.latest_pdf(j) is not None
 
 
 @asynccontextmanager
@@ -453,6 +454,30 @@ def set_description(
         notice = (f"Descripción guardada (afinidad {job.fit}), pero la IA no pudo evaluarla: {e}. "
                   "Vuelve a intentarlo con el mismo botón.")
     return RedirectResponse(with_notice(back, notice[:300]), status_code=303)
+
+
+def _pdf(path: Path) -> FileResponse:
+    return FileResponse(path, media_type="application/pdf", filename=path.name,
+                        content_disposition_type="inline")
+
+
+@app.post("/jobs/{job_id:path}/cv")
+def make_cv(job_id: str, back: str = Form("/"), session: Session = Depends(get_session)):
+    """Fase 2b: genera el CV adaptado a esta oferta y lo abre (nunca inventa experiencia)."""
+    job = get_job(session, job_id)
+    try:
+        path, removed, _gaps = cv_adapt.build(job, make_panel_scorer())
+    except Exception as e:  # sin descripción, sin key, sin red, sin navegador…
+        return RedirectResponse(with_notice(back, f"No pude crear el CV: {e}"[:300]), status_code=303)
+    return _pdf(path)
+
+
+@app.get("/jobs/{job_id:path}/cv.pdf")
+def last_cv(job_id: str, session: Session = Depends(get_session)):
+    path = cv_adapt.latest_pdf(get_job(session, job_id))
+    if path is None:
+        raise HTTPException(404, "Esta oferta todavía no tiene CV adaptado")
+    return _pdf(path)
 
 
 @app.post("/jobs/{job_id:path}/follow-up")

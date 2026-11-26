@@ -8,7 +8,7 @@ Agente personal de búsqueda de empleo para Colombia. Junta ofertas de fuentes *
 
 > **Human-in-the-loop y respeto de los ToS.** El radar **no** se postula solo ni hace scraping de LinkedIn ni de Computrabajo, porque sus términos lo prohíben. Busca, filtra y organiza. La postulación la haces tú.
 
-## Estado: Fases 1, 2 y búsqueda ampliada
+## Estado: Fases 1, 1b, 2, 2b y búsqueda ampliada
 
 - [x] **3 fuentes con API pública:** Get on Board (6 categorías + búsquedas de texto), **Himalayas** (filtrada a ofertas abiertas a Colombia) y **Jobicy** (región LATAM)
 - [x] **Prefiltro local de afinidad (0–100), sin IA:** nivel junior/senior, años de experiencia pedidos, tipo de rol, habilidades de tu CV, inglés exigido y ubicación. Cada punto deja una razón visible en el panel
@@ -36,8 +36,8 @@ Agente personal de búsqueda de empleo para Colombia. Junta ofertas de fuentes *
 | 1 ✅ | Get on Board, base de datos y panel con filtros y estados |
 | 1b ✅ | Lectura de **tus propios correos de alertas** con la API de Gmail (OAuth, solo lectura): LinkedIn y Perfect Match de Computrabajo |
 | 2 ✅ | Puntuación con LLM (nota de 1 a 5, requisitos cumplidos y faltantes, en JSON) |
-| 2b | CV adaptado por oferta en PDF. **Regla: nunca inventar experiencia** |
-| 3 | Login JWT, WebSockets ("nueva oferta 4,5/5" en tiempo real), métricas del embudo |
+| 2b ✅ | CV adaptado por oferta en PDF. **Regla: nunca inventar experiencia** (verificada en código) |
+| ~~3~~ | ~~Login JWT, WebSockets, métricas del embudo~~ (descartada) |
 | 4 | App Android (push + Aprobar/Descartar), despliegue en Render/Railway + Neon, video de demo |
 
 ## Requisitos
@@ -102,6 +102,23 @@ Opciones de `radar.run` para la corrida diaria:
 python -m radar.run --no-notify          # sin aviso de escritorio al terminar
 python -m radar.run --wait-network 0     # no esperar a que haya red
 python -m radar.run --log-file otro.log  # por defecto: logs\radar.log (rota a 1 MB, guarda 7)
+```
+
+### CV adaptado por oferta (fase 2b)
+
+En el panel, cada oferta con descripción tiene el botón **CV adaptado (PDF)**. La IA (el mismo proveedor
+que puntúa) elige y ordena lo de tu CV maestro que pide esa oferta, y el PDF se abre en otra pestaña.
+
+- **Nunca inventa experiencia.** Además de la regla en el prompt, `verify()` borra en código toda habilidad,
+  proyecto, empresa o cifra que no aparezca en `cv/cv_maestro.md`.
+- Lo que la oferta pide y tu CV no demuestra no va al PDF: se guarda como "gaps" en el `.json` de al lado.
+- Tus datos de contacto no pasan por la IA: van en `cv/contacto.md`, con líneas `Nombre: …`, `Correo: …`, `Teléfono: …`, `LinkedIn: …`.
+- El PDF lo imprime Edge o Chrome sin ventana (o el navegador de `CV_BROWSER`) y queda en `cv/adaptados/`. Git ignora esa carpeta.
+- Sale en el idioma de la oferta (español o inglés).
+
+```powershell
+python -m radar.cv_adapt "linkedin:4484196886"          # PDF
+python -m radar.cv_adapt "linkedin:4484196886" --html   # HTML para revisar
 ```
 
 ### Corrida diaria automática (Programador de tareas)
@@ -240,6 +257,7 @@ radar/
   ingest.py            upsert idempotente (no toca status ni first_seen_at) + control de duplicados
   scoring.py           rúbrica + GeminiScorer / ClaudeScorer con salida estructurada (JobScore)
   score.py             CLI: puntúa las pendientes y guarda una por una
+  cv_adapt.py          fase 2b: CV adaptado por oferta (IA + verificación anti-invención + PDF con Edge)
   main.py              FastAPI: panel HTML, /api/jobs, estado (HTML o JSON), notas, seguimiento, /export.csv
   templates/, static/  vista (style.css, keys.js con los atajos)
 scripts/               instalar_tarea.ps1 / desinstalar_tarea.ps1 (tarea programada diaria)

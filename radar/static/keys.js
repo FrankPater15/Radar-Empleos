@@ -173,6 +173,17 @@
       announce("Evaluando con IA, puede tardar unos segundos…");
       return;
     }
+    if (form.matches("form.make-cv")) {
+      // Se abre en otra pestaña: el botón vuelve a estar activo cuando ya pudo terminar
+      const btn = form.querySelector("button[type=submit]");
+      if (btn) {
+        const label = btn.textContent;
+        setTimeout(() => { btn.disabled = true; btn.textContent = "Creando el CV…"; }, 0);
+        setTimeout(() => { btn.disabled = false; btn.textContent = label; }, 30000);
+      }
+      announce("Creando el CV adaptado; se abrirá en otra pestaña en unos segundos.");
+      return;
+    }
     if (form.matches("form.status")) {
       const btn = ev.submitter;
       if (!btn || btn.name !== "status") return;

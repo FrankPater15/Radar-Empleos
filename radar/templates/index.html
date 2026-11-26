@@ -257,6 +257,16 @@
         </details>
         {% endif %}
 
+        {% if j.description and (j.description_manual or j.source not in paste_sources) %}
+        <div class="cv-actions">
+          <form method="post" action="/jobs/{{ j.id }}/cv" class="make-cv" target="_blank">
+            <input type="hidden" name="back" value="{{ back }}#oferta-{{ j.id }}">
+            <button type="submit" class="btn-ghost btn-small" title="CV con lo de tu CV maestro que pide esta oferta. Nunca inventa experiencia.">CV adaptado (PDF)</button>
+          </form>
+          {% if cv_listo(j) %}<a class="btn-small" href="/jobs/{{ j.id }}/cv.pdf" target="_blank" rel="noopener">Último CV generado</a>{% endif %}
+        </div>
+        {% endif %}
+
         {% if j.description %}
         <details class="desc">
           <summary>Descripción completa</summary>
